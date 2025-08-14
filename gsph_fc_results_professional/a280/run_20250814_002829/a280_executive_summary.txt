@@ -1,0 +1,7 @@
+RESUMEN EJECUTIVO - a280
+==================================================
+Longitud obtenida: 3024.000000
+Valor BKS: 2579
+Gap: 17.2547%
+Tiempo ejecución: 7.859208s
+Número de puntos: 280

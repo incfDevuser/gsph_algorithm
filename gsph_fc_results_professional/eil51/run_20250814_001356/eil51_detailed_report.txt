@@ -1,0 +1,53 @@
+================================================================================
+REPORTE DETALLADO - ALGORITMO GSPH-FC MEJORADO
+================================================================================
+Instancia: eil51
+Fecha y hora: 2025-08-14 00:13:56
+
+INFORMACIÓN DE LA INSTANCIA:
+  • Total de puntos: 51
+  • Valor BKS (Best Known Solution): 426
+  • Valor obtenido: 445.000000
+  • Gap vs BKS: 4.4601%
+  • ✅ Excelente resultado (≤5% gap)
+
+DISTRIBUCIÓN POR CUADRANTES:
+  • Q1 (Cuadrante):
+    - Número de nodos: 13 (25.49%)
+    - Longitud de ruta: 110.000000
+    - Densidad promedio: 8.4615
+  • Q2 (Cuadrante):
+    - Número de nodos: 14 (27.45%)
+    - Longitud de ruta: 116.000000
+    - Densidad promedio: 8.2857
+  • Q3 (Cuadrante):
+    - Número de nodos: 12 (23.53%)
+    - Longitud de ruta: 102.000000
+    - Densidad promedio: 8.5000
+  • Q4 (Cuadrante):
+    - Número de nodos: 12 (23.53%)
+    - Longitud de ruta: 87.000000
+    - Densidad promedio: 7.2500
+
+ANÁLISIS DE CONEXIONES:
+  • Longitud intra-cuadrante: 415.000000 (93.26%)
+  • Longitud inter-cuadrante: 30.000000 (6.74%)
+  • Longitud total: 445.000000
+
+ANÁLISIS TEMPORAL:
+  • Tiempo total de ejecución: 0.270370 segundos
+  • Tiempo por punto: 0.005301 segundos
+
+ESTADÍSTICAS DEL ALGORITMO:
+  • Número de clusters generados: 4
+  • Tamaño promedio de cluster: 12.75
+  • Rango de tamaños: 12 - 14
+  • Tiempo construcción quadtree: 0.000043s
+  • Tiempo construcción tour: 0.001259s
+  • Tiempo post-optimización: 0.268980s
+  • Parámetros adaptativos:
+    - eps_frontier: 5
+    - max_iter: 150
+  • Conexiones inter-cuadrante: 8
+
+================================================================================
