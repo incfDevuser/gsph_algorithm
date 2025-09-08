@@ -1,0 +1,395 @@
+REPORTE CONSOLIDADO - ALGORITMO GSPH-FC
+============================================================
+
+Configuración utilizada:
+  eps_frontier: 5
+  max_iter_local: 800
+
+ESTADÍSTICAS GENERALES:
+  Total de instancias procesadas: 74
+  Instancias exitosas: 74
+  Instancias con error: 0
+
+ESTADÍSTICAS DE INSTANCIAS EXITOSAS:
+  Longitud promedio: 90984.66
+  Longitud mínima: 152.00
+  Longitud máxima: 611833.00
+  Tiempo promedio: 69.890s
+  Tiempo mínimo: 0.001s
+  Tiempo máximo: 1330.942s
+  Puntos promedio: 855.4
+  Puntos mínimo: 10
+  Puntos máximo: 5934
+
+RESULTADOS DETALLADOS:
+------------------------------------------------------------
+Instancia: a280
+  Puntos: 280
+  Longitud: 2950.00
+  Tiempo: 0.594s
+
+Instancia: berlin52
+  Puntos: 52
+  Longitud: 8450.00
+  Tiempo: 0.018s
+
+Instancia: bier127
+  Puntos: 127
+  Longitud: 124739.00
+  Tiempo: 0.234s
+
+Instancia: ch130
+  Puntos: 130
+  Longitud: 6634.00
+  Tiempo: 0.091s
+
+Instancia: ch150
+  Puntos: 150
+  Longitud: 7063.00
+  Tiempo: 0.206s
+
+Instancia: d1291
+  Puntos: 1291
+  Longitud: 55089.00
+  Tiempo: 24.890s
+
+Instancia: d1655
+  Puntos: 1655
+  Longitud: 66366.00
+  Tiempo: 68.458s
+
+Instancia: d198
+  Puntos: 198
+  Longitud: 13519.00
+  Tiempo: 0.602s
+
+Instancia: d493
+  Puntos: 493
+  Longitud: 36459.00
+  Tiempo: 4.360s
+
+Instancia: d657
+  Puntos: 657
+  Longitud: 51197.00
+  Tiempo: 6.919s
+
+Instancia: eil10
+  Puntos: 10
+  Longitud: 152.00
+  Tiempo: 0.001s
+
+Instancia: eil101
+  Puntos: 101
+  Longitud: 678.00
+  Tiempo: 0.070s
+
+Instancia: eil20
+  Puntos: 20
+  Longitud: 238.00
+  Tiempo: 0.001s
+
+Instancia: eil51
+  Puntos: 51
+  Longitud: 464.00
+  Tiempo: 0.013s
+
+Instancia: eil76
+  Puntos: 76
+  Longitud: 592.00
+  Tiempo: 0.038s
+
+Instancia: fl1400
+  Puntos: 1400
+  Longitud: 20941.00
+  Tiempo: 50.316s
+
+Instancia: fl1577
+  Puntos: 1577
+  Longitud: 23858.00
+  Tiempo: 53.261s
+
+Instancia: fl3795
+  Puntos: 3795
+  Longitud: 29593.00
+  Tiempo: 532.776s
+
+Instancia: fl417
+  Puntos: 417
+  Longitud: 13008.00
+  Tiempo: 2.413s
+
+Instancia: fnl4461
+  Puntos: 4461
+  Longitud: 197020.00
+  Tiempo: 690.332s
+
+Instancia: gil262
+  Puntos: 262
+  Longitud: 2607.00
+  Tiempo: 0.619s
+
+Instancia: kroA100
+  Puntos: 100
+  Longitud: 24042.00
+  Tiempo: 0.060s
+
+Instancia: kroA150
+  Puntos: 150
+  Longitud: 29508.00
+  Tiempo: 0.193s
+
+Instancia: kroA200
+  Puntos: 200
+  Longitud: 32044.00
+  Tiempo: 0.276s
+
+Instancia: kroB100
+  Puntos: 100
+  Longitud: 23414.00
+  Tiempo: 0.076s
+
+Instancia: kroB150
+  Puntos: 150
+  Longitud: 28080.00
+  Tiempo: 0.185s
+
+Instancia: kroB200
+  Puntos: 200
+  Longitud: 31421.00
+  Tiempo: 0.351s
+
+Instancia: kroC100
+  Puntos: 100
+  Longitud: 22519.00
+  Tiempo: 0.039s
+
+Instancia: kroD100
+  Puntos: 100
+  Longitud: 22748.00
+  Tiempo: 0.083s
+
+Instancia: kroE100
+  Puntos: 100
+  Longitud: 24410.00
+  Tiempo: 0.059s
+
+Instancia: lin105
+  Puntos: 105
+  Longitud: 16230.00
+  Tiempo: 0.099s
+
+Instancia: lin318
+  Puntos: 318
+  Longitud: 45566.00
+  Tiempo: 1.372s
+
+Instancia: linhp318
+  Puntos: 318
+  Longitud: 46058.00
+  Tiempo: 1.621s
+
+Instancia: nrw1379
+  Puntos: 1379
+  Longitud: 61878.00
+  Tiempo: 65.595s
+
+Instancia: p654
+  Puntos: 654
+  Longitud: 38055.00
+  Tiempo: 9.124s
+
+Instancia: pcb1173
+  Puntos: 1173
+  Longitud: 63356.00
+  Tiempo: 21.490s
+
+Instancia: pcb3038
+  Puntos: 3038
+  Longitud: 150567.00
+  Tiempo: 244.221s
+
+Instancia: pcb442
+  Puntos: 442
+  Longitud: 55424.00
+  Tiempo: 2.553s
+
+Instancia: pr1002
+  Puntos: 1002
+  Longitud: 280158.00
+  Tiempo: 24.864s
+
+Instancia: pr107
+  Puntos: 107
+  Longitud: 45724.00
+  Tiempo: 0.048s
+
+Instancia: pr124
+  Puntos: 124
+  Longitud: 61183.00
+  Tiempo: 0.097s
+
+Instancia: pr136
+  Puntos: 136
+  Longitud: 105831.00
+  Tiempo: 0.151s
+
+Instancia: pr144
+  Puntos: 144
+  Longitud: 68612.00
+  Tiempo: 0.107s
+
+Instancia: pr152
+  Puntos: 152
+  Longitud: 77678.00
+  Tiempo: 0.189s
+
+Instancia: pr226
+  Puntos: 226
+  Longitud: 88036.00
+  Tiempo: 0.340s
+
+Instancia: pr2392
+  Puntos: 2392
+  Longitud: 408885.00
+  Tiempo: 93.074s
+
+Instancia: pr264
+  Puntos: 264
+  Longitud: 51651.00
+  Tiempo: 0.462s
+
+Instancia: pr299
+  Puntos: 299
+  Longitud: 53216.00
+  Tiempo: 0.961s
+
+Instancia: pr439
+  Puntos: 439
+  Longitud: 120982.00
+  Tiempo: 3.754s
+
+Instancia: pr76
+  Puntos: 76
+  Longitud: 117450.00
+  Tiempo: 0.035s
+
+Instancia: rat195
+  Puntos: 195
+  Longitud: 2625.00
+  Tiempo: 0.336s
+
+Instancia: rat575
+  Puntos: 575
+  Longitud: 7434.00
+  Tiempo: 3.446s
+
+Instancia: rat783
+  Puntos: 783
+  Longitud: 9532.00
+  Tiempo: 11.426s
+
+Instancia: rat99
+  Puntos: 99
+  Longitud: 1385.00
+  Tiempo: 0.091s
+
+Instancia: rd100
+  Puntos: 100
+  Longitud: 8658.00
+  Tiempo: 0.087s
+
+Instancia: rd400
+  Puntos: 400
+  Longitud: 16667.00
+  Tiempo: 1.996s
+
+Instancia: rl1304
+  Puntos: 1304
+  Longitud: 281449.00
+  Tiempo: 28.274s
+
+Instancia: rl1323
+  Puntos: 1323
+  Longitud: 296416.00
+  Tiempo: 32.562s
+
+Instancia: rl1889
+  Puntos: 1889
+  Longitud: 346351.00
+  Tiempo: 98.597s
+
+Instancia: rl5915
+  Puntos: 5915
+  Longitud: 611833.00
+  Tiempo: 1330.942s
+
+Instancia: rl5934
+  Puntos: 5934
+  Longitud: 597583.00
+  Tiempo: 1264.480s
+
+Instancia: st70
+  Puntos: 70
+  Longitud: 711.00
+  Tiempo: 0.022s
+
+Instancia: ts225
+  Puntos: 225
+  Longitud: 139495.00
+  Tiempo: 0.462s
+
+Instancia: tsp225
+  Puntos: 225
+  Longitud: 4296.00
+  Tiempo: 0.579s
+
+Instancia: u1060
+  Puntos: 1060
+  Longitud: 239478.00
+  Tiempo: 30.280s
+
+Instancia: u1432
+  Puntos: 1432
+  Longitud: 164222.00
+  Tiempo: 32.057s
+
+Instancia: u159
+  Puntos: 159
+  Longitud: 48755.00
+  Tiempo: 0.229s
+
+Instancia: u1817
+  Puntos: 1817
+  Longitud: 63206.00
+  Tiempo: 54.868s
+
+Instancia: u2152
+  Puntos: 2152
+  Longitud: 70191.00
+  Tiempo: 116.809s
+
+Instancia: u2319
+  Puntos: 2319
+  Longitud: 240450.00
+  Tiempo: 134.752s
+
+Instancia: u574
+  Puntos: 574
+  Longitud: 40134.00
+  Tiempo: 6.503s
+
+Instancia: u724
+  Puntos: 724
+  Longitud: 45677.00
+  Tiempo: 10.041s
+
+Instancia: vm1084
+  Puntos: 1084
+  Longitud: 265550.00
+  Tiempo: 28.021s
+
+Instancia: vm1748
+  Puntos: 1748
+  Longitud: 374424.00
+  Tiempo: 77.345s
+

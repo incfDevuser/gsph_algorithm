@@ -1,0 +1,9 @@
+Instancia: pr152
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 77678.00
+Tiempo de ejecucion      : 0.189 segundos
+Puntos por cuadrante:
+  Q1: 38 puntos, longitud: 18817
+  Q2: 38 puntos, longitud: 18493
+  Q3: 38 puntos, longitud: 18777
+  Q4: 38 puntos, longitud: 18193

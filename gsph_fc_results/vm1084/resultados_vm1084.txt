@@ -1,0 +1,6 @@
+Instancia: vm1084
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 265550.00
+Tiempo de ejecucion      : 28.021 segundos
+Puntos por cuadrante:
+  QALL: 1084 puntos, longitud: 260560

@@ -1,0 +1,9 @@
+Instancia: linhp318
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 46058.00
+Tiempo de ejecucion      : 1.621 segundos
+Puntos por cuadrante:
+  Q1: 69 puntos, longitud: 10750
+  Q2: 62 puntos, longitud: 10406
+  Q3: 104 puntos, longitud: 12802
+  Q4: 83 puntos, longitud: 11791

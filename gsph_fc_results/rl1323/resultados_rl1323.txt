@@ -1,0 +1,6 @@
+Instancia: rl1323
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 296416.00
+Tiempo de ejecucion      : 32.562 segundos
+Puntos por cuadrante:
+  QALL: 1323 puntos, longitud: 291103

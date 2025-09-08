@@ -1,0 +1,9 @@
+Instancia: rd400
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 16667.00
+Tiempo de ejecucion      : 1.996 segundos
+Puntos por cuadrante:
+  Q1: 108 puntos, longitud: 4475
+  Q2: 95 puntos, longitud: 4053
+  Q3: 107 puntos, longitud: 4280
+  Q4: 90 puntos, longitud: 3705

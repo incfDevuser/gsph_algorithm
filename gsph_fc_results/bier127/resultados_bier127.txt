@@ -1,0 +1,9 @@
+Instancia: bier127
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 122055.00
+Tiempo de ejecucion      : 0.168 segundos
+Puntos por cuadrante:
+  Q1: 28 puntos, longitud: 31087
+  Q2: 74 puntos, longitud: 50614
+  Q3: 8 puntos, longitud: 10503
+  Q4: 17 puntos, longitud: 25166

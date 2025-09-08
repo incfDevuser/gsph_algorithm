@@ -1,0 +1,9 @@
+Instancia: u1060
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 239478.00
+Tiempo de ejecucion      : 30.280 segundos
+Puntos por cuadrante:
+  Q1: 223 puntos, longitud: 53625
+  Q2: 251 puntos, longitud: 53655
+  Q3: 307 puntos, longitud: 66992
+  Q4: 279 puntos, longitud: 64104

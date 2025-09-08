@@ -1,0 +1,9 @@
+Instancia: kroA100
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 24042.00
+Tiempo de ejecucion      : 0.060 segundos
+Puntos por cuadrante:
+  Q1: 24 puntos, longitud: 5676
+  Q2: 27 puntos, longitud: 5521
+  Q3: 25 puntos, longitud: 6147
+  Q4: 24 puntos, longitud: 5728

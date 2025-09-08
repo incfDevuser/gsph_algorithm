@@ -1,0 +1,9 @@
+Instancia: rat99
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 1385.00
+Tiempo de ejecucion      : 0.091 segundos
+Puntos por cuadrante:
+  Q1: 24 puntos, longitud: 349
+  Q2: 24 puntos, longitud: 316
+  Q3: 25 puntos, longitud: 308
+  Q4: 26 puntos, longitud: 369

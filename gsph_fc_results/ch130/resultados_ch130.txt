@@ -1,0 +1,9 @@
+Instancia: ch130
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 6634.00
+Tiempo de ejecucion      : 0.091 segundos
+Puntos por cuadrante:
+  Q1: 37 puntos, longitud: 1630
+  Q2: 28 puntos, longitud: 1373
+  Q3: 28 puntos, longitud: 1517
+  Q4: 37 puntos, longitud: 1686

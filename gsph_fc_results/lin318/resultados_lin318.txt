@@ -1,0 +1,6 @@
+Instancia: lin318
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 45566.00
+Tiempo de ejecucion      : 1.372 segundos
+Puntos por cuadrante:
+  QALL: 318 puntos, longitud: 44122

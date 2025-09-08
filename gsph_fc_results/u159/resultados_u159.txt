@@ -1,0 +1,6 @@
+Instancia: u159
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 48755.00
+Tiempo de ejecucion      : 0.229 segundos
+Puntos por cuadrante:
+  QALL: 159 puntos, longitud: 46147

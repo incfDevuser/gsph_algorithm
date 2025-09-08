@@ -1,0 +1,2 @@
+1) Calcular centro de masa, en el cuadrante.
+2) LKH por cluster, y rezar.

@@ -1,0 +1,6 @@
+── RESULTADOS GSPH–FC (RÁPIDO) ──
+Instancia: d198
+Longitud total de la ruta: 17202.00
+Tiempo de ejecución      : 0.188 segundos
+Time budget (pulido)     : 1.50 s
+cand_m=12, knn_k=16, 2opt_sweeps=1, orL=1, ILS=1

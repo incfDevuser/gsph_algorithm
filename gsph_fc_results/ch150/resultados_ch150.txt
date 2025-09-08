@@ -1,0 +1,6 @@
+Instancia: ch150
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 7063.00
+Tiempo de ejecucion      : 0.206 segundos
+Puntos por cuadrante:
+  QALL: 150 puntos, longitud: 6837

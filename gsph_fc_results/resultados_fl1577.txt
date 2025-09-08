@@ -1,0 +1,6 @@
+Instancia: fl1577
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 25473.00
+Tiempo de ejecucion      : 31.467 segundos
+Puntos por cuadrante:
+  QALL: 1577 puntos, longitud: 25448

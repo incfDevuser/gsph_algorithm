@@ -1,0 +1,9 @@
+Instancia: fl417
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 13008.00
+Tiempo de ejecucion      : 2.413 segundos
+Puntos por cuadrante:
+  Q1: 122 puntos, longitud: 3921
+  Q2: 91 puntos, longitud: 2684
+  Q3: 110 puntos, longitud: 2533
+  Q4: 94 puntos, longitud: 3056

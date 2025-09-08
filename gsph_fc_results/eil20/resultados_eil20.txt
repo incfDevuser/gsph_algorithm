@@ -1,0 +1,9 @@
+Instancia: eil20
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 238.00
+Tiempo de ejecucion      : 0.001 segundos
+Puntos por cuadrante:
+  Q1: 4 puntos, longitud: 40
+  Q2: 6 puntos, longitud: 58
+  Q3: 6 puntos, longitud: 60
+  Q4: 4 puntos, longitud: 41

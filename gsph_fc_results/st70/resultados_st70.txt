@@ -1,0 +1,6 @@
+Instancia: st70
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 711.00
+Tiempo de ejecucion      : 0.022 segundos
+Puntos por cuadrante:
+  QALL: 70 puntos, longitud: 680

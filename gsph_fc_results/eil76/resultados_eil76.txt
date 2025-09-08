@@ -1,0 +1,6 @@
+Instancia: eil76
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 592.00
+Tiempo de ejecucion      : 0.038 segundos
+Puntos por cuadrante:
+  QALL: 76 puntos, longitud: 563

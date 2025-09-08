@@ -1,0 +1,6 @@
+Instancia: nrw1379
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 61878.00
+Tiempo de ejecucion      : 65.595 segundos
+Puntos por cuadrante:
+  QALL: 1379 puntos, longitud: 61459

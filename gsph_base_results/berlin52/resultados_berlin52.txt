@@ -1,0 +1,6 @@
+── RESULTADOS GSPH–FC (RÁPIDO) ──
+Instancia: berlin52
+Longitud total de la ruta: 8036.00
+Tiempo de ejecución      : 0.010 segundos
+Time budget (pulido)     : 1.50 s
+cand_m=12, knn_k=16, 2opt_sweeps=1, orL=1, ILS=1

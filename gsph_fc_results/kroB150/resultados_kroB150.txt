@@ -1,0 +1,9 @@
+Instancia: kroB150
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 28080.00
+Tiempo de ejecucion      : 0.185 segundos
+Puntos por cuadrante:
+  Q1: 35 puntos, longitud: 7975
+  Q2: 49 puntos, longitud: 7399
+  Q3: 37 puntos, longitud: 6169
+  Q4: 29 puntos, longitud: 5653

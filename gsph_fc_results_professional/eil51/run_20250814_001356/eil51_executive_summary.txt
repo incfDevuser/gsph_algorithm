@@ -1,7 +1,0 @@
-RESUMEN EJECUTIVO - eil51
-==================================================
-Longitud obtenida: 445.000000
-Valor BKS: 426
-Gap: 4.4601%
-Tiempo ejecución: 0.270370s
-Número de puntos: 51

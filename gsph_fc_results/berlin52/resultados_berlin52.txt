@@ -1,0 +1,9 @@
+Instancia: berlin52
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 7928.00
+Tiempo de ejecucion      : 0.013 segundos
+Puntos por cuadrante:
+  Q1: 23 puntos, longitud: 2505
+  Q2: 4 puntos, longitud: 1199
+  Q3: 16 puntos, longitud: 2037
+  Q4: 9 puntos, longitud: 1771

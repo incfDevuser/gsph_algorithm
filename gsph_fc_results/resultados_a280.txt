@@ -1,9 +1,6 @@
 Instancia: a280
 -- RESULTADOS GSPH-FC --
-Longitud total de la ruta: 2860.00
-Tiempo de ejecucion      : 1.829 segundos
+Longitud total de la ruta: 2930.00
+Tiempo de ejecucion      : 0.426 segundos
 Puntos por cuadrante:
-  Q1: 65 puntos, longitud: 667
-  Q2: 66 puntos, longitud: 698
-  Q3: 86 puntos, longitud: 891
-  Q4: 63 puntos, longitud: 588
+  QALL: 279 puntos, longitud: 2908

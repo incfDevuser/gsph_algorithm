@@ -1,0 +1,6 @@
+Instancia: rd100
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 8658.00
+Tiempo de ejecucion      : 0.087 segundos
+Puntos por cuadrante:
+  QALL: 100 puntos, longitud: 8332

@@ -1,7 +1,0 @@
-RESUMEN EJECUTIVO - berlin52
-==================================================
-Longitud obtenida: 8574.000000
-Valor BKS: 7542
-Gap: 13.6834%
-Tiempo ejecución: 0.295637s
-Número de puntos: 52

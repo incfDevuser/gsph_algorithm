@@ -1,0 +1,9 @@
+Instancia: gil262
+-- RESULTADOS GSPH-FC --
+Longitud total de la ruta: 2607.00
+Tiempo de ejecucion      : 0.619 segundos
+Puntos por cuadrante:
+  Q1: 73 puntos, longitud: 675
+  Q2: 64 puntos, longitud: 582
+  Q3: 61 puntos, longitud: 650
+  Q4: 64 puntos, longitud: 665
