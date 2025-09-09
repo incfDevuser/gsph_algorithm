@@ -1,0 +1,60 @@
+/* Estilos personalizados para el mapa */
+
+/* Mejora los popups de Leaflet */
+.leaflet-popup-content-wrapper {
+  border-radius: 8px;
+  padding: 0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.leaflet-popup-content {
+  margin: 12px 16px;
+  min-width: 150px;
+}
+
+.leaflet-popup-tip {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Personalización de íconos y marcadores */
+.custom-div-icon {
+  background: transparent;
+  border: none;
+}
+
+/* Estilos para tooltip en hover */
+.leaflet-tooltip {
+  background-color: rgba(255, 255, 255, 0.9);
+  border: 1px solid #f0f0f0;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Controles personalizados */
+.map-controls-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 6px;
+}
+
+.map-control-button {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.map-control-button:hover {
+  background-color: #f5f5f5;
+}
