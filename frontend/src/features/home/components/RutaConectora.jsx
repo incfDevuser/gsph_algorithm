@@ -1,7 +1,7 @@
-import React from "react";
-import { Polyline, Marker } from "react-leaflet";
+import React, { useContext } from "react";
+import { Polyline, Marker, GeoJSON } from "react-leaflet";
 import L from "leaflet";
-import data from "../../../data/tsp_santiago.json";
+import { GSPHContext } from "../../../App";
 
 const simularGSPH = (points) => {
   const lats = points.map((p) => p[0]);
@@ -55,25 +55,66 @@ const simularGSPH = (points) => {
 };
 
 const RutaConectora = ({ visible = true }) => {
-  if (!visible) return null;
-  const allPoints = [
-    [data.depot.lat, data.depot.lng],
-    ...data.orders.map((o) => [o.lat, o.lng]),
-  ];
+  const { depot, orders, optimizationResult } = useContext(GSPHContext);
 
-  const { rutas, conexiones } = simularGSPH(allPoints);
+  if (!visible) return null;
+
   const conexionIcon = new L.DivIcon({
     className: "custom-div-icon",
     html: `<div style="background-color: purple; width: 10px; height: 10px; border-radius: 50%; border: 2px solid white;"></div>`,
     iconSize: [14, 14],
     iconAnchor: [7, 7],
   });
+
+  if (optimizationResult && optimizationResult.solution) {
+    return (
+      <GeoJSON
+        data={optimizationResult.solution}
+        style={(feature) => {
+          switch (feature.properties.type) {
+            case "route":
+              return {
+                color: "#10b981",
+                weight: 4,
+                opacity: 0.8,
+              };
+            case "connection":
+              return {
+                color: "purple",
+                weight: 3,
+                opacity: 0.8,
+              };
+            case "quadrant":
+              return {
+                color: "#3b82f6",
+                fillColor: "#3b82f6",
+                weight: 1,
+                opacity: 0.4,
+                fillOpacity: 0.1,
+              };
+            default:
+              return {
+                color: "#10b981",
+                weight: 3,
+              };
+          }
+        }}
+      />
+    );
+  }
+  const allPoints = [
+    [depot.lat, depot.lng],
+    ...orders.map((o) => [o.lat, o.lng]),
+  ];
+
+  const { rutas, conexiones } = simularGSPH(allPoints);
   const colors = {
     Q1: "blue",
     Q2: "green",
     Q3: "red",
     Q4: "orange",
   };
+
   return (
     <>
       {Object.entries(rutas).map(([quadName, points]) => {

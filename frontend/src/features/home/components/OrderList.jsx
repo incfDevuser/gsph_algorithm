@@ -1,14 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import OrdenCard from "./OrdenCard";
-import tspData from "../../../data/tsp_santiago.json";
-import { Search, FileDown, Filter } from "lucide-react";
+import { Search, FileDown, Filter, Plus } from "lucide-react";
+import { GSPHContext } from "../../../App";
 
 const OrderList = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const { orders, optimizationResult, setShowOrderForm } = useContext(GSPHContext);
   
   const filteredOrders = searchTerm 
-    ? tspData.orders.filter(o => o.id.toLowerCase().includes(searchTerm.toLowerCase())) 
-    : tspData.orders;
+    ? orders.filter(o => o.id.toLowerCase().includes(searchTerm.toLowerCase())) 
+    : orders;
 
   return (
     <section className="flex h-full flex-col bg-white">
@@ -19,8 +20,22 @@ const OrderList = () => {
               Ordenes
             </h2>
             <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
-              {tspData.orders.length} ordenes totales
+              {orders.length} ordenes totales
             </span>
+          </div>
+          <div className="flex gap-2 mt-2">
+            <button 
+              onClick={() => setShowOrderForm(true)}
+              className="flex items-center justify-center py-1.5 px-3 text-xs font-medium rounded-md bg-gradient-to-r from-green-500 to-blue-500 text-white hover:bg-blue-700"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Nueva Orden
+            </button>
+            {optimizationResult && (
+              <div className="text-xs py-1.5 px-3 bg-emerald-100 text-emerald-800 rounded-md flex items-center">
+                Distancia: {optimizationResult.metrics.total_distance_km} km
+              </div>
+            )}
           </div>
           <div className="relative mt-3">
             <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
@@ -41,7 +56,7 @@ const OrderList = () => {
           filteredOrders.map((o) => <OrdenCard key={o.id} order={o} />)
         ) : (
           <div className="flex h-40 items-center justify-center">
-            <p className="text-sm text-neutral-500">No orders match your search</p>
+            <p className="text-sm text-neutral-500">No hay ordenes disponibles</p>
           </div>
         )}
       </div>

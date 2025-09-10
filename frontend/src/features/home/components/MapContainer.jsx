@@ -1,18 +1,20 @@
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, createContext } from "react";
 import {
   MapContainer as LeafletMap,
   TileLayer,
   Marker,
   Popup,
   CircleMarker,
+  useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
-import data from "../../../data/tsp_santiago.json";
 import "leaflet/dist/leaflet.css";
 import "./MapStyles.css";
 import CuadranteLayer from "./CuadranteLayer";
 import RutaConectora from "./RutaConectora";
 import { GSPHContext } from "../../../App";
+
+export const MapContext = createContext();
 
 const depotIcon = new L.DivIcon({
   className: "custom-div-icon",
@@ -35,10 +37,55 @@ const createDeliveryIcon = (id) => {
   });
 };
 
+function MapClickHandler() {
+  const { selectLocationMode, setSelectedLocation } = useContext(MapContext);
+  
+  const map = useMapEvents({
+    click: (e) => {
+      if (selectLocationMode) {
+        setSelectedLocation({
+          lat: e.latlng.lat,
+          lng: e.latlng.lng
+        });
+      }
+    }
+  });
+  
+  return null;
+}
+
+const LocationMarker = () => {
+  const { selectedLocation, selectLocationMode } = useContext(MapContext);
+  
+  if (!selectLocationMode || !selectedLocation) return null;
+  
+  return (
+    <Marker 
+      position={[selectedLocation.lat, selectedLocation.lng]}
+      icon={new L.DivIcon({
+        className: "custom-div-icon",
+        html: `<div style="background-color: #10b981; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      })}
+    >
+      <Popup className="custom-popup">
+        <div className="font-medium text-gray-900">Ubicación seleccionada</div>
+        <div className="text-xs text-gray-600">
+          {selectedLocation.lat.toFixed(6)}, {selectedLocation.lng.toFixed(6)}
+        </div>
+      </Popup>
+    </Marker>
+  );
+};
+
 const MapContainer = () => {
-  const center = [data.depot.lat, data.depot.lng];
-  const { gsphActive } = useContext(GSPHContext);
+  const { gsphActive, depot, orders, optimizationResult } = useContext(GSPHContext);
+  const center = [depot.lat, depot.lng];
   const [showQuadrants, setShowQuadrants] = useState(false);
+  const [selectLocationMode, setSelectLocationMode] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  
   React.useEffect(() => {
     if (gsphActive) {
       setShowQuadrants(true);
@@ -54,45 +101,52 @@ const MapContainer = () => {
   };
 
   return (
-    <LeafletMap
-      center={center}
-      zoom={14}
-      className="h-[60vh] md:h-[72vh] w-full"
-      zoomControl={false}
-    >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-      />
-      <Marker position={[data.depot.lat, data.depot.lng]} icon={depotIcon}>
-        <Popup className="custom-popup">
-          <div className="font-medium text-gray-900 mb-1">
-            {data.depot.name || "Centro de Distribución"}
-          </div>
-          <div className="text-xs text-gray-600">
-            Centro de operaciones principal
-          </div>
-        </Popup>
-      </Marker>
-      <CircleMarker
-        center={[data.depot.lat, data.depot.lng]}
-        radius={50}
-        pathOptions={{
-          fillColor: "#1e3a8a",
-          fillOpacity: 0.05,
-          weight: 1,
-          color: "#1e3a8a",
-          opacity: 0.3,
-        }}
-      />
-      {data.orders.map((o) => {
-        const status = getOrderStatus(o.id);
-        return (
-          <Marker
-            key={o.id}
-            position={[o.lat, o.lng]}
-            icon={createDeliveryIcon(o.id)}
-          >
+    <MapContext.Provider value={{
+      selectLocationMode,
+      setSelectLocationMode,
+      selectedLocation,
+      setSelectedLocation
+    }}>
+      <LeafletMap
+        center={center}
+        zoom={14}
+        className="h-[60vh] md:h-[72vh] w-full"
+        zoomControl={false}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+        />
+        {selectLocationMode && <MapClickHandler />}
+        <Marker position={[depot.lat, depot.lng]} icon={depotIcon}>
+          <Popup className="custom-popup">
+            <div className="font-medium text-gray-900 mb-1">
+              {depot.name || "Centro de Distribución"}
+            </div>
+            <div className="text-xs text-gray-600">
+              Centro de operaciones principal
+            </div>
+          </Popup>
+        </Marker>
+        <CircleMarker
+          center={[depot.lat, depot.lng]}
+          radius={50}
+          pathOptions={{
+            fillColor: "#1e3a8a",
+            fillOpacity: 0.05,
+            weight: 1,
+            color: "#1e3a8a",
+            opacity: 0.3,
+          }}
+        />
+        {orders.map((o) => {
+          const status = getOrderStatus(o.id);
+          return (
+            <Marker
+              key={o.id}
+              position={[o.lat, o.lng]}
+              icon={createDeliveryIcon(o.id)}
+            >
             <Popup className="custom-popup">
               <div className="font-medium text-gray-900">
                 Pedido #{o.id.substring(0, 5)}
@@ -107,6 +161,7 @@ const MapContainer = () => {
       })}
       <CuadranteLayer visible={showQuadrants || gsphActive} />
       <RutaConectora visible={gsphActive} />
+      {selectLocationMode && <LocationMarker />}
       <div className="leaflet-top leaflet-left" style={{ marginTop: "10px" }}>
         <div className="leaflet-control leaflet-bar bg-white p-2 rounded shadow-md">
           <div className="flex flex-col gap-2">
@@ -134,6 +189,7 @@ const MapContainer = () => {
         </div>
       </div>
     </LeafletMap>
+    </MapContext.Provider>
   );
 };
 
