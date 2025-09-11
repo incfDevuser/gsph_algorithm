@@ -1,4 +1,4 @@
-import React, { useState, useContext, createContext } from "react";
+import React, { useState } from "react";
 import {
   MapContainer as LeafletMap,
   TileLayer,
@@ -12,9 +12,7 @@ import "leaflet/dist/leaflet.css";
 import "./MapStyles.css";
 import CuadranteLayer from "./CuadranteLayer";
 import RutaConectora from "./RutaConectora";
-import { GSPHContext } from "../../../App";
-
-export const MapContext = createContext();
+import { useGSPHStore } from "../../../store/GSPHStore";
 
 const depotIcon = new L.DivIcon({
   className: "custom-div-icon",
@@ -38,7 +36,7 @@ const createDeliveryIcon = (id) => {
 };
 
 function MapClickHandler() {
-  const { selectLocationMode, setSelectedLocation } = useContext(MapContext);
+  const { selectLocationMode, setSelectedLocation } = useGSPHStore();
   
   const map = useMapEvents({
     click: (e) => {
@@ -47,6 +45,9 @@ function MapClickHandler() {
           lat: e.latlng.lat,
           lng: e.latlng.lng
         });
+        console.log("Ubicación seleccionada:", e.latlng);
+      } else {
+        console.log("Clic en el mapa:", e.latlng);
       }
     }
   });
@@ -55,9 +56,9 @@ function MapClickHandler() {
 }
 
 const LocationMarker = () => {
-  const { selectedLocation, selectLocationMode } = useContext(MapContext);
+  const { selectedLocation } = useGSPHStore();
   
-  if (!selectLocationMode || !selectedLocation) return null;
+  if (!selectedLocation) return null;
   
   return (
     <Marker 
@@ -80,17 +81,18 @@ const LocationMarker = () => {
 };
 
 const MapContainer = () => {
-  const { gsphActive, depot, orders, optimizationResult } = useContext(GSPHContext);
-  const center = [depot.lat, depot.lng];
+  const { route, optimized, selectedLocation } = useGSPHStore();
   const [showQuadrants, setShowQuadrants] = useState(false);
-  const [selectLocationMode, setSelectLocationMode] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState(null);
+  
+  const depot = route?.depot || { lat: -33.447487, lng: -70.673676, name: "Depot" };
+  const orders = route?.orders || [];
+  const center = [depot.lat, depot.lng];
   
   React.useEffect(() => {
-    if (gsphActive) {
+    if (optimized) {
       setShowQuadrants(true);
     }
-  }, [gsphActive]);
+  }, [optimized]);
 
   const getOrderStatus = (id) => {
     const lastChar = id.slice(-1);
@@ -101,12 +103,6 @@ const MapContainer = () => {
   };
 
   return (
-    <MapContext.Provider value={{
-      selectLocationMode,
-      setSelectLocationMode,
-      selectedLocation,
-      setSelectedLocation
-    }}>
       <LeafletMap
         center={center}
         zoom={14}
@@ -117,7 +113,7 @@ const MapContainer = () => {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
-        {selectLocationMode && <MapClickHandler />}
+        <MapClickHandler />
         <Marker position={[depot.lat, depot.lng]} icon={depotIcon}>
           <Popup className="custom-popup">
             <div className="font-medium text-gray-900 mb-1">
@@ -159,27 +155,26 @@ const MapContainer = () => {
           </Marker>
         );
       })}
-      <CuadranteLayer visible={showQuadrants || gsphActive} />
-      <RutaConectora visible={gsphActive} />
-      {selectLocationMode && <LocationMarker />}
+      <CuadranteLayer visible={showQuadrants} />
+      <RutaConectora visible={!!optimized} coordinates={optimized?.optimized_coords?.map(p => [p.lat, p.lng])} />
+      <LocationMarker />
       <div className="leaflet-top leaflet-left" style={{ marginTop: "10px" }}>
         <div className="leaflet-control leaflet-bar bg-white p-2 rounded shadow-md">
           <div className="flex flex-col gap-2">
             <button
               onClick={() => setShowQuadrants(!showQuadrants)}
               className={`px-3 py-2 text-xs font-medium rounded ${
-                showQuadrants || gsphActive
+                showQuadrants
                   ? "bg-blue-100 text-blue-700 border border-blue-300"
                   : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
               }`}
-              disabled={gsphActive}
             >
-              {showQuadrants || gsphActive
+              {showQuadrants
                 ? "Ocultar Cuadrantes"
                 : "Mostrar Cuadrantes"}
             </button>
 
-            {gsphActive && (
+            {optimized && (
               <div className="mt-1 px-3 py-1 text-xs font-medium bg-emerald-100 text-emerald-700 border border-emerald-300 rounded flex items-center gap-1">
                 <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
                 Ruta GSPH activa
@@ -189,7 +184,6 @@ const MapContainer = () => {
         </div>
       </div>
     </LeafletMap>
-    </MapContext.Provider>
   );
 };
 

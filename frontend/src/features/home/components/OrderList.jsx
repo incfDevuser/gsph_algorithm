@@ -1,11 +1,11 @@
-import React, { useState, useContext } from "react";
+import React, { useState } from "react";
 import OrdenCard from "./OrdenCard";
 import { Search, FileDown, Filter, Plus } from "lucide-react";
-import { GSPHContext } from "../../../App";
+import { useGSPHStore } from "../../../store/GSPHStore";
 
-const OrderList = () => {
+const OrderList = ({ depot, orders, optimized }) => {
   const [searchTerm, setSearchTerm] = useState("");
-  const { orders, optimizationResult, setShowOrderForm } = useContext(GSPHContext);
+  const { loading } = useGSPHStore();
   
   const filteredOrders = searchTerm 
     ? orders.filter(o => o.id.toLowerCase().includes(searchTerm.toLowerCase())) 
@@ -25,15 +25,15 @@ const OrderList = () => {
           </div>
           <div className="flex gap-2 mt-2">
             <button 
-              onClick={() => setShowOrderForm(true)}
+              onClick={() => {}}
               className="flex items-center justify-center py-1.5 px-3 text-xs font-medium rounded-md bg-gradient-to-r from-green-500 to-blue-500 text-white hover:bg-blue-700"
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
               Nueva Orden
             </button>
-            {optimizationResult && (
+            {optimized && (
               <div className="text-xs py-1.5 px-3 bg-emerald-100 text-emerald-800 rounded-md flex items-center">
-                Distancia: {optimizationResult.metrics.total_distance_km} km
+                Distancia: {optimized.total_length} km
               </div>
             )}
           </div>

@@ -1,7 +1,7 @@
-import React, { useContext } from "react";
+import React from "react";
 import { Polyline, Marker, GeoJSON } from "react-leaflet";
 import L from "leaflet";
-import { GSPHContext } from "../../../App";
+import { useGSPHStore } from "../../../store/GSPHStore";
 
 const simularGSPH = (points) => {
   const lats = points.map((p) => p[0]);
@@ -54,10 +54,10 @@ const simularGSPH = (points) => {
   return { rutas, conexiones, midLat, midLng };
 };
 
-const RutaConectora = ({ visible = true }) => {
-  const { depot, orders, optimizationResult } = useContext(GSPHContext);
-
-  if (!visible) return null;
+const RutaConectora = ({ visible = true, coordinates }) => {
+  const { route, optimized } = useGSPHStore();
+  
+  if (!visible || !route) return null;
 
   const conexionIcon = new L.DivIcon({
     className: "custom-div-icon",
@@ -66,42 +66,22 @@ const RutaConectora = ({ visible = true }) => {
     iconAnchor: [7, 7],
   });
 
-  if (optimizationResult && optimizationResult.solution) {
+  if (coordinates && coordinates.length > 0) {
     return (
-      <GeoJSON
-        data={optimizationResult.solution}
-        style={(feature) => {
-          switch (feature.properties.type) {
-            case "route":
-              return {
-                color: "#10b981",
-                weight: 4,
-                opacity: 0.8,
-              };
-            case "connection":
-              return {
-                color: "purple",
-                weight: 3,
-                opacity: 0.8,
-              };
-            case "quadrant":
-              return {
-                color: "#3b82f6",
-                fillColor: "#3b82f6",
-                weight: 1,
-                opacity: 0.4,
-                fillOpacity: 0.1,
-              };
-            default:
-              return {
-                color: "#10b981",
-                weight: 3,
-              };
-          }
+      <Polyline
+        positions={coordinates}
+        pathOptions={{
+          color: "#10b981",
+          weight: 4,
+          opacity: 0.8
         }}
       />
     );
   }
+  
+  const depot = route?.depot || { lat: -33.447487, lng: -70.673676 };
+  const orders = route?.orders || [];
+  
   const allPoints = [
     [depot.lat, depot.lng],
     ...orders.map((o) => [o.lat, o.lng]),

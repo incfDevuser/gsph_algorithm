@@ -1,6 +1,6 @@
-import React, { useState, useContext, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { X, MapPin, Plus, Clock } from "lucide-react";
-import { MapContext } from "./MapContainer";
+import { useGSPHStore } from "../../../store/GSPHStore";
 
 const OrderForm = ({ onClose, onOrderCreated }) => {
   const [formData, setFormData] = useState({
@@ -12,18 +12,13 @@ const OrderForm = ({ onClose, onOrderCreated }) => {
     lng: null,
   });
   const [step, setStep] = useState(1);
-  const [localSelectedLocation, setLocalSelectedLocation] = useState(null);
-  const [localSelectLocationMode, setLocalSelectLocationMode] = useState(false);
-  const mapContext = useContext(MapContext);
-
-  const selectLocationMode =
-    mapContext?.selectLocationMode || localSelectLocationMode;
-  const setSelectLocationMode =
-    mapContext?.setSelectLocationMode || setLocalSelectLocationMode;
-  const selectedLocation =
-    mapContext?.selectedLocation || localSelectedLocation;
-  const setSelectedLocation =
-    mapContext?.setSelectedLocation || setLocalSelectedLocation;
+  
+  const { 
+    selectedLocation, 
+    selectLocationMode, 
+    setSelectedLocation, 
+    setSelectLocationMode 
+  } = useGSPHStore();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -56,12 +51,8 @@ const OrderForm = ({ onClose, onOrderCreated }) => {
 
     onOrderCreated(newOrder);
     onClose();
-    if (setSelectedLocation) {
-      setSelectedLocation(null);
-    }
-    if (setSelectLocationMode) {
-      setSelectLocationMode(false);
-    }
+    setSelectedLocation(null);
+    setSelectLocationMode(false);
   };
 
   return (
@@ -202,9 +193,7 @@ const OrderForm = ({ onClose, onOrderCreated }) => {
               <button
                 onClick={() => {
                   setStep(1);
-                  if (setSelectLocationMode) {
-                    setSelectLocationMode(false);
-                  }
+                  setSelectLocationMode(false);
                 }}
                 className="py-2 px-4 border border-neutral-300 text-neutral-700 rounded-md hover:bg-neutral-50"
               >
@@ -213,9 +202,9 @@ const OrderForm = ({ onClose, onOrderCreated }) => {
 
               <button
                 onClick={handleSubmit}
-                disabled={mapContext && !selectedLocation}
+                disabled={!selectedLocation}
                 className={`py-2 px-4 rounded-md ${
-                  !mapContext || selectedLocation
+                  selectedLocation
                     ? "bg-green-600 hover:bg-green-700 text-white"
                     : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
                 }`}
