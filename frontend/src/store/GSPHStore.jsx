@@ -8,7 +8,7 @@ export const useGSPHStore = create((set, get) => ({
   optimized: null,
   selectedLocation: null,
   selectLocationMode: false,
-    //crear la ruta
+  //crear la ruta
   createRoute: async (depot) => {
     set({ loading: true, error: null });
     try {
@@ -19,6 +19,19 @@ export const useGSPHStore = create((set, get) => ({
       set({ route: res.data, optimized: null });
     } catch (err) {
       set({ error: err.message || "Error al crear ruta" });
+    } finally {
+      set({ loading: false });
+    }
+  },
+  // Add to your store
+  fetchAllRoutes: async () => {
+    set({ loading: true, error: null });
+    try {
+      const res = await axios.get("http://localhost:8000/routes/");
+      return res.data;
+    } catch (err) {
+      set({ error: err.message || "Error al obtener rutas" });
+      return [];
     } finally {
       set({ loading: false });
     }
@@ -38,7 +51,7 @@ export const useGSPHStore = create((set, get) => ({
       );
       const updatedRoute = {
         ...route,
-        orders: [...(route.orders || []), ...orders]
+        orders: [...(route.orders || []), ...orders],
       };
       set({ route: updatedRoute });
     } catch (err) {

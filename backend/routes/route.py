@@ -69,7 +69,28 @@ def get_raw_route(route_id: int, db: Session = Depends(get_db)):
         },
         "orders": [{"id": o.order_id, "lat": o.lat, "lng": o.lng} for o in orders]
     }
-
+@router.get("/", summary="Obtener todas las rutas", description="Devuelve una lista de todas las rutas disponibles.")
+def get_all_routes(db: Session = Depends(get_db)):
+    routes = db.query(Route).all()
+    
+    result = []
+    for route in routes:
+        orders_count = db.query(Order).filter(Order.route_id == route.id).count()
+        optimized = db.query(OptimizedRoute).filter(OptimizedRoute.route_id == route.id).first() is not None
+        
+        result.append({
+            "route_id": route.id,
+            "depot": {
+                "id": route.depot_id,
+                "name": route.depot_name,
+                "lat": route.depot_lat,
+                "lng": route.depot_lng
+            },
+            "orders_count": orders_count,
+            "is_optimized": optimized
+        })
+    
+    return result
 @router.post("/{route_id}/optimize", summary="Optimizar ruta", description="Ejecuta el algoritmo GSPH y guarda la ruta optimizada.")
 def optimize_route_now(route_id: int, db: Session = Depends(get_db)):
     route = db.query(Route).filter(Route.id == route_id).first()

@@ -19,9 +19,10 @@ function App() {
     createRoute,
     addOrders,
     optimizeRoute,
+    fetchRoute
   } = useGSPHStore();
 
-  const [localOrders, setLocalOrders] = useState(tspData.orders);
+  const [localOrders, setLocalOrders] = useState([]);
   const [depot, setDepot] = useState(tspData.depot);
 
   useEffect(() => {
@@ -39,7 +40,11 @@ function App() {
   const [ordersAdded, setOrdersAdded] = useState(false);
 
   useEffect(() => {
-    if (route && localOrders.length > 0 && !ordersAdded) {
+    if (route && route.orders && route.orders.length > 0) {
+      setLocalOrders(route.orders);
+      setDepot(route.depot);
+      setOrdersAdded(true);
+    } else if (route && localOrders.length > 0 && !ordersAdded) {
       addOrders(localOrders);
       setOrdersAdded(true);
     }
