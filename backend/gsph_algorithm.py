@@ -462,16 +462,27 @@ def total_tour_length_float(tour):
     if len(tour) < 2: return 0
     return total_path_length_float(tour) + eucl_float(tour[-1], tour[0])
 
-def optimize_route(depot, orders):
+def optimize_route(depot, orders, method="gsph"):
     """
     Entrada: 
       - depot: {id, name, lat, lng}
       - orders: [{id, lat, lng}, ...]
+      - method: "gsph" (original) o "genetic" (algoritmo genético)
 
     Salida:
       - optimized_coords: [[lat, lng], ...]
       - total_length: float
     """
+    if method == "genetic":
+        # Importar el módulo genético
+        try:
+            from gsph_genetic import optimize_route_genetic
+            return optimize_route_genetic(depot, orders)
+        except ImportError:
+            print("Módulo genético no disponible, usando GSPH original")
+            method = "gsph"
+    
+    # Método GSPH original
     nodes = [(depot["lat"], depot["lng"])] + [(o["lat"], o["lng"]) for o in orders]
     routes, _, _, _, _ = gsph_fc(nodes)
     optimized_coords = [[float(lat), float(lng)] for lat, lng in routes['QALL']]

@@ -92,13 +92,15 @@ def get_all_routes(db: Session = Depends(get_db)):
     
     return result
 @router.post("/{route_id}/optimize", summary="Optimizar ruta", description="Ejecuta el algoritmo GSPH y guarda la ruta optimizada.")
-def optimize_route_now(route_id: int, db: Session = Depends(get_db)):
+def optimize_route_now(route_id: int, method: str = "gsph", db: Session = Depends(get_db)):
     route = db.query(Route).filter(Route.id == route_id).first()
     if not route:
         raise HTTPException(status_code=404, detail="Ruta no encontrada")
 
-    if route.optimized_route:
-        raise HTTPException(status_code=400, detail="Ruta ya optimizada. Usa GET /routes/{id}/optimized")
+    existing_opt = db.query(OptimizedRoute).filter(OptimizedRoute.route_id == route_id).first()
+    if existing_opt:
+        db.delete(existing_opt)
+        db.commit()
 
     orders = db.query(Order).filter(Order.route_id == route_id).all()
     if not orders:
@@ -112,7 +114,8 @@ def optimize_route_now(route_id: int, db: Session = Depends(get_db)):
     }
 
     orders_out = [{"id": o.order_id, "lat": o.lat, "lng": o.lng} for o in orders]
-    optimized_coords, total_len = optimize_route(depot, orders_out)
+    
+    optimized_coords, total_len = optimize_route(depot, orders_out, method=method)
 
     opt = OptimizedRoute(
         route_id=route.id,
@@ -123,8 +126,9 @@ def optimize_route_now(route_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return {
-        "message": "Ruta optimizada y guardada",
+        "message": f"Ruta optimizada con {method.upper()} y guardada",
         "route_id": route_id,
+        "method": method,
         "optimized_coords": optimized_coords,
         "total_length": total_len
     }

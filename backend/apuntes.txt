@@ -1,0 +1,7 @@
+Se pueden hacer 2 formas:
+
+    # GSPH Original
+    POST /routes/{route_id}/optimize?method=gsph
+
+    # GSPH Genético  
+    POST /routes/{route_id}/optimize?method=genetic

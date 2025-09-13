@@ -1,0 +1,227 @@
+{
+  "depot": {
+    "id": "DEPOT_CENTRAL",
+    "name": "Centro de Distribución Principal",
+    "lat": -33.447487,
+    "lng": -70.673676
+  },
+  "orders": [
+    {
+      "id": "ORD-001",
+      "name": "Farmacia Central",
+      "lat": -33.441000,
+      "lng": -70.680000,
+      "timeWindow": "08:00-10:00",
+      "priority": "high"
+    },
+    {
+      "id": "ORD-002", 
+      "name": "Supermercado Norte",
+      "lat": -33.430000,
+      "lng": -70.665000,
+      "timeWindow": "09:00-11:00",
+      "priority": "medium"
+    },
+    {
+      "id": "ORD-003",
+      "name": "Hospital Regional",
+      "lat": -33.455000,
+      "lng": -70.665000,
+      "timeWindow": "10:00-12:00",
+      "priority": "high"
+    },
+    {
+      "id": "ORD-004",
+      "name": "Clínica Las Condes",
+      "lat": -33.445000,
+      "lng": -70.685000,
+      "timeWindow": "08:30-10:30",
+      "priority": "high"
+    },
+    {
+      "id": "ORD-005",
+      "name": "Consultorio Municipal",
+      "lat": -33.440000,
+      "lng": -70.675000,
+      "timeWindow": "11:00-13:00",
+      "priority": "medium"
+    },
+    {
+      "id": "ORD-006",
+      "name": "Centro Médico Integramédica",
+      "lat": -33.452000,
+      "lng": -70.668000,
+      "timeWindow": "14:00-16:00",
+      "priority": "medium"
+    },
+    {
+      "id": "ORD-007",
+      "name": "Farmacia Cruz Verde",
+      "lat": -33.448000,
+      "lng": -70.672000,
+      "timeWindow": "09:30-11:30",
+      "priority": "low"
+    },
+    {
+      "id": "ORD-008",
+      "name": "Laboratorio Clínico",
+      "lat": -33.443000,
+      "lng": -70.678000,
+      "timeWindow": "08:00-10:00",
+      "priority": "high"
+    },
+    {
+      "id": "ORD-009",
+      "name": "Veterinaria San Bernardo",
+      "lat": -33.460000,
+      "lng": -70.690000,
+      "timeWindow": "15:00-17:00",
+      "priority": "low"
+    },
+    {
+      "id": "ORD-010",
+      "name": "Policlínico Universidad Católica",
+      "lat": -33.425000,
+      "lng": -70.655000,
+      "timeWindow": "13:00-15:00",
+      "priority": "medium"
+    },
+    {
+      "id": "ORD-011",
+      "name": "Centro de Salud Familiar",
+      "lat": -33.470000,
+      "lng": -70.680000,
+      "timeWindow": "10:00-12:00",
+      "priority": "medium"
+    },
+    {
+      "id": "ORD-012",
+      "name": "Farmacia Salcobrand",
+      "lat": -33.435000,
+      "lng": -70.670000,
+      "timeWindow": "12:00-14:00",
+      "priority": "low"
+    },
+    {
+      "id": "ORD-013",
+      "name": "Hospital Militar",
+      "lat": -33.465000,
+      "lng": -70.675000,
+      "timeWindow": "08:00-10:00",
+      "priority": "high"
+    },
+    {
+      "id": "ORD-014",
+      "name": "Centro Médico Alemán",
+      "lat": -33.420000,
+      "lng": -70.640000,
+      "timeWindow": "16:00-18:00",
+      "priority": "medium"
+    },
+    {
+      "id": "ORD-015",
+      "name": "Clínica Santa María",
+      "lat": -33.480000,
+      "lng": -70.695000,
+      "timeWindow": "14:30-16:30",
+      "priority": "high"
+    },
+    {
+      "id": "ORD-016",
+      "name": "Consultorio Dental",
+      "lat": -33.438000,
+      "lng": -70.682000,
+      "timeWindow": "11:30-13:30",
+      "priority": "low"
+    },
+    {
+      "id": "ORD-017",
+      "name": "Centro de Especialidades Médicas",
+      "lat": -33.427000,
+      "lng": -70.648000,
+      "timeWindow": "09:00-11:00",
+      "priority": "medium"
+    },
+    {
+      "id": "ORD-018",
+      "name": "Farmacia Independencia",
+      "lat": -33.463000,
+      "lng": -70.687000,
+      "timeWindow": "15:30-17:30",
+      "priority": "low"
+    },
+    {
+      "id": "ORD-019",
+      "name": "Hospital Base San Juan de Dios",
+      "lat": -33.475000,
+      "lng": -70.665000,
+      "timeWindow": "07:30-09:30",
+      "priority": "high"
+    },
+    {
+      "id": "ORD-020",
+      "name": "Centro de Rehabilitación",
+      "lat": -33.415000,
+      "lng": -70.635000,
+      "timeWindow": "13:30-15:30",
+      "priority": "medium"
+    },
+    {
+      "id": "ORD-021",
+      "name": "Laboratorio Pasteur",
+      "lat": -33.459000,
+      "lng": -70.671000,
+      "timeWindow": "08:30-10:30",
+      "priority": "high"
+    },
+    {
+      "id": "ORD-022",
+      "name": "Clínica Bicentenario",
+      "lat": -33.432000,
+      "lng": -70.688000,
+      "timeWindow": "12:30-14:30",
+      "priority": "medium"
+    },
+    {
+      "id": "ORD-023",
+      "name": "Centro de Diagnóstico",
+      "lat": -33.467000,
+      "lng": -70.692000,
+      "timeWindow": "10:30-12:30",
+      "priority": "medium"
+    },
+    {
+      "id": "ORD-024",
+      "name": "Farmacia Popular",
+      "lat": -33.428000,
+      "lng": -70.660000,
+      "timeWindow": "16:30-18:30",
+      "priority": "low"
+    },
+    {
+      "id": "ORD-025",
+      "name": "Instituto Nacional de Cancerología",
+      "lat": -33.485000,
+      "lng": -70.670000,
+      "timeWindow": "07:00-09:00",
+      "priority": "high"
+    }
+  ],
+  "metadata": {
+    "region": "Región Metropolitana, Santiago",
+    "total_orders": 25,
+    "coverage_area": "Centro y sectores aledaños",
+    "estimated_radius_km": 15.0,
+    "created_at": "2025-09-13T10:00:00Z",
+    "priority_distribution": {
+      "high": 8,
+      "medium": 11, 
+      "low": 6
+    },
+    "time_windows": {
+      "earliest_start": "07:00",
+      "latest_end": "18:30",
+      "average_duration": "2 horas"
+    }
+  }
+}
