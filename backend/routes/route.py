@@ -115,11 +115,18 @@ def optimize_route_now(route_id: int, method: str = "gsph", db: Session = Depend
 
     orders_out = [{"id": o.order_id, "lat": o.lat, "lng": o.lng} for o in orders]
     
-    optimized_coords, total_len = optimize_route(depot, orders_out, method=method)
+    optimized_coords, total_len, order_sequence = optimize_route(depot, orders_out, method=method)
+
+    opt_data = {
+        "coordinates": optimized_coords,
+        "order_sequence": order_sequence,
+        "total_length": total_len,
+        "method": method
+    }
 
     opt = OptimizedRoute(
         route_id=route.id,
-        coordinates_json=json.dumps(optimized_coords),
+        coordinates_json=json.dumps(opt_data),
         total_length=total_len
     )
     db.add(opt)
@@ -130,6 +137,7 @@ def optimize_route_now(route_id: int, method: str = "gsph", db: Session = Depend
         "route_id": route_id,
         "method": method,
         "optimized_coords": optimized_coords,
+        "order_sequence": order_sequence,
         "total_length": total_len
     }
 
@@ -139,9 +147,21 @@ def get_optimized_route(route_id: int, db: Session = Depends(get_db)):
     if not opt:
         raise HTTPException(status_code=404, detail="Esta ruta aún no ha sido optimizada")
 
-    coords = json.loads(opt.coordinates_json)
-    return {
-        "route_id": route_id,
-        "optimized_coords": coords,
-        "total_length": opt.total_length
-    }
+    coords_data = json.loads(opt.coordinates_json)
+
+    if isinstance(coords_data, list):
+
+        return {
+            "route_id": route_id,
+            "optimized_coords": coords_data,
+            "total_length": opt.total_length
+        }
+    else:
+
+        return {
+            "route_id": route_id,
+            "optimized_coords": coords_data.get("coordinates", []),
+            "order_sequence": coords_data.get("order_sequence", []),
+            "total_length": opt.total_length,
+            "method": coords_data.get("method", "gsph")
+        }

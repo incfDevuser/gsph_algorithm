@@ -40,12 +40,12 @@ def read_tsplib(filename):
     return nodes
 
 def euclidean_distance(p1, p2):
-    """TSPLIB EUC_2D redondeada (entera)."""
+    
     dist = np.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
     return int(dist + 0.5)
 
 def eucl_float(a, b):
-    """Distancia float (sin redondeo) para decisiones heurísticas rápidas."""
+    
     return hypot(a[0]-b[0], a[1]-b[1])
 
 def total_path_length(path):
@@ -81,10 +81,7 @@ def best_frontier_pair(A, B, direction, mid, eps):
     return best, best_d
 
 def tsp_2opt(points, max_iter=50):
-    """
-    2-opt simple para PATH abierto usando euclidean_distance.
-    Devuelve la ruta mejorada.
-    """
+    
     n = len(points)
     if n < 3:
         return points[:]
@@ -112,7 +109,7 @@ def build_distance_matrix(points):
     np.fill_diagonal(D, 0)
     return D
 def build_candidate_sets(points, m=CAND_M, knn_k=CAND_KNN, use_delaunay=USE_DELAUNAY):
-    """Solo kNN por defecto (rápido). Delaunay opcional."""
+    
     n = len(points)
     P = np.asarray(points, dtype=float)
     cand_sets = [set() for _ in range(n)]
@@ -159,10 +156,7 @@ def tour_len_from_perm(perm, D):
     s += D[perm[-1], perm[0]]
     return int(s)
 def ensure_valid_perm(perm, N, D):
-    """
-    Limpia 'perm': quita duplicados preservando orden y añade faltantes
-    insertándolos en la mejor posición (criterio de inserción mínima).
-    """
+    
     seen = set()
     perm2 = []
     for v in perm:
@@ -231,7 +225,7 @@ def two_opt_dlb(perm, D, cand, max_sweeps=1, skip_prob=SKIP_PROB_2OPT, deadline=
     return perm
 
 def or_opt_move(perm, D, cand, Lmax=OR_OPT_MAX_L, move_limit=OR_OPT_MOVE_LIMIT, deadline=None):
-    """Mueve bloques cortos en tour circular. L=1 por defecto para máxima velocidad."""
+    
     if Lmax <= 0:
         return perm
     N = D.shape[0]
@@ -309,7 +303,7 @@ def double_bridge_on_perm(perm):
     return A + Dd + C + B + E
 
 def polish_fast(nodes, route):
-    """Pulido con presupuesto de tiempo: 2-opt(DLB) → Or-opt → 2-opt(DLB) → ILS."""
+    
     if len(route) < 10:
         return route[:]
     D = build_distance_matrix(nodes)
@@ -398,7 +392,7 @@ def plot_gsph_fc(routes, conns, xmid, ymid, save_path=None):
         ys = [p[1] for p in all_points]
         xmin, xmax = min(xs), max(xs)
         ymin, ymax = min(ys), max(ys)
-        # Add some padding
+
         padding = max((xmax-xmin), (ymax-ymin)) * 0.1
         xmin -= padding; xmax += padding
         ymin -= padding; ymax += padding
@@ -463,34 +457,36 @@ def total_tour_length_float(tour):
     return total_path_length_float(tour) + eucl_float(tour[-1], tour[0])
 
 def optimize_route(depot, orders, method="gsph"):
-    """
-    Entrada: 
-      - depot: {id, name, lat, lng}
-      - orders: [{id, lat, lng}, ...]
-      - method: "gsph" (original) o "genetic" (algoritmo genético)
-
-    Salida:
-      - optimized_coords: [[lat, lng], ...]
-      - total_length: float
-    """
+    
     if method == "genetic":
-        # Importar el módulo genético
+
         try:
             from gsph_genetic import optimize_route_genetic
             return optimize_route_genetic(depot, orders)
         except ImportError:
             print("Módulo genético no disponible, usando GSPH original")
             method = "gsph"
-    
-    # Método GSPH original
+
     nodes = [(depot["lat"], depot["lng"])] + [(o["lat"], o["lng"]) for o in orders]
+
+    coord_to_id = {}
+    coord_to_id[(depot["lat"], depot["lng"])] = depot["id"]
+    for o in orders:
+        coord_to_id[(o["lat"], o["lng"])] = o["id"]
+    
     routes, _, _, _, _ = gsph_fc(nodes)
     optimized_coords = [[float(lat), float(lng)] for lat, lng in routes['QALL']]
 
     total_length = total_tour_length_float(routes['QALL'])
 
-    return optimized_coords, total_length
+    order_sequence = []
+    for i in range(1, len(routes['QALL']) - 1):
+        lat, lng = routes['QALL'][i]
+        coord_key = (lat, lng)
+        if coord_key in coord_to_id and coord_to_id[coord_key] != depot["id"]:
+            order_sequence.append(coord_to_id[coord_key])
 
+    return optimized_coords, total_length, order_sequence
 
 if __name__ == "__main__":
     os.makedirs(RESULTS_DIR, exist_ok=True)
