@@ -1,0 +1,8 @@
+Instancia: ts225.tsp
+N nodes: 225
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 127906.00
+Longitud promedio     : 131117.80
+Rango (min-max)       : 127906.00 - 134082.00
+Tiempo de ejecución      : 3.961 segundos
+Peak RSS (bytes)         : 239321088

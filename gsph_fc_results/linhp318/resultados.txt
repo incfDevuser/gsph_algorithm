@@ -1,0 +1,8 @@
+Instancia: linhp318.tsp
+N nodes: 318
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 43148.00
+Longitud promedio     : 43659.10
+Rango (min-max)       : 43148.00 - 44333.00
+Tiempo de ejecución      : 6.410 segundos
+Peak RSS (bytes)         : 249462784

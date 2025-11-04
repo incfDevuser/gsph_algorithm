@@ -1,0 +1,20 @@
+Estadísticas de 10 ejecuciones:
+Mejor longitud:     85729.00
+Peor longitud:      86539.00
+Longitud promedio:  85904.00
+Desviación estándar: 320.53
+Mejor tiempo:       0.264s
+Peor tiempo:        2.657s
+Tiempo promedio:    0.563s
+
+Detalle de todas las ejecuciones:
+Run 1: length=85729.00, time=2.657s (MEJOR)
+Run 2: length=85787.00, time=0.341s
+Run 3: length=85765.00, time=0.386s
+Run 4: length=85729.00, time=0.341s (MEJOR)
+Run 5: length=85765.00, time=0.407s
+Run 6: length=85729.00, time=0.319s (MEJOR)
+Run 7: length=86481.00, time=0.264s
+Run 8: length=85787.00, time=0.279s
+Run 9: length=85729.00, time=0.302s (MEJOR)
+Run 10: length=86539.00, time=0.329s

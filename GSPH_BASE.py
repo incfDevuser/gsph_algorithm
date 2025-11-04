@@ -30,15 +30,15 @@ MAX_ITER_LOCAL    = 800
 RESULTS_DIR       = "gsph_fc_results"
 BASE_DIR          = "./src/INSTANCES"
 
-TIME_BUDGET_S     = 1.5 
-CAND_M            = 12    
-CAND_KNN          = 16   
-USE_DELAUNAY      = False 
-MAX_SWEEPS_2OPT   = 1  
-OR_OPT_MAX_L      = 1  
-OR_OPT_MOVE_LIMIT = 3000 
-ILS_ITERS         = 1     
-SKIP_PROB_2OPT    = 0.35 
+TIME_BUDGET_S     = 5.0   # Más tiempo para optimización (1.5 -> 5.0)
+CAND_M            = 20    # Más candidatos por nodo (12 -> 20) 
+CAND_KNN          = 25    # Más vecinos cercanos (16 -> 25)
+USE_DELAUNAY      = True  # Activar Delaunay para mejor conectividad
+MAX_SWEEPS_2OPT   = 3     # Más pasadas de 2-opt (1 -> 3)
+OR_OPT_MAX_L      = 3     # Cadenas más largas Or-opt (1 -> 3)
+OR_OPT_MOVE_LIMIT = 8000  # Más movimientos Or-opt (3000 -> 8000)
+ILS_ITERS         = 5     # Más iteraciones ILS (1 -> 5)
+SKIP_PROB_2OPT    = 0.15  # Menos probabilidad de saltar (0.35 -> 0.15) 
 
 _event_enabled = False
 _events = []
@@ -369,20 +369,34 @@ def polish_fast(nodes, route):
     deadline = time.monotonic() + max(0.05, TIME_BUDGET_S)
     raw_perm = route_to_perm(route, nodes)
     perm = ensure_valid_perm(raw_perm, len(nodes), D)
+    # Fase 1: 2-opt intensivo inicial
     perm = two_opt_dlb(perm, D, cand, max_sweeps=MAX_SWEEPS_2OPT, deadline=deadline)
+    
+    # Fase 2: Or-opt con cadenas más largas
     perm = or_opt_move(perm, D, cand, Lmax=OR_OPT_MAX_L, deadline=deadline)
-    perm = two_opt_dlb(perm, D, cand, max_sweeps=1, deadline=deadline)
+    
+    # Fase 3: 2-opt de pulido
+    perm = two_opt_dlb(perm, D, cand, max_sweeps=2, deadline=deadline)
 
+    # Fase 4: ILS intensivo con múltiples perturbaciones
     best = perm[:]; best_len = tour_len_from_perm(best, D)
-    for _ in range(max(0, ILS_ITERS)):
+    for ils_iter in range(max(0, ILS_ITERS)):
         if time.monotonic() > deadline: break
         record_event('ils_double_bridge')
         kick = double_bridge_on_perm(best)
         kick = ensure_valid_perm(kick, len(nodes), D)
-        kick = two_opt_dlb(kick, D, cand, max_sweeps=1, deadline=deadline)
+        
+        # Aplicar búsqueda local más intensa en cada perturbación
+        kick = two_opt_dlb(kick, D, cand, max_sweeps=2, deadline=deadline)
+        if time.monotonic() < deadline:
+            kick = or_opt_move(kick, D, cand, Lmax=min(2, OR_OPT_MAX_L), deadline=deadline)
+        if time.monotonic() < deadline:
+            kick = two_opt_dlb(kick, D, cand, max_sweeps=1, deadline=deadline)
+        
         L = tour_len_from_perm(kick, D)
         if L < best_len:
             best, best_len = kick[:], L
+            record_event(f'ils_improvement_{ils_iter}')
     record_event('polish_fast_exit')
     return perm_to_route(best, nodes)
 def _concat_routes_q_order(routes):
@@ -408,16 +422,33 @@ def gsph_fc(nodes, MAX_ITER_LOCAL=800 ,EPS_FRONTIER=5):
     for q, pts in quads.items():
         if len(pts) > 1:
             record_event(f'quadrant_start_{q}')
-            start = pts[0]
-            remaining = set(pts); remaining.remove(start)
-            curr = start; seed = [curr]
-            while remaining:
-                nxt = min(remaining, key=lambda p: eucl_float(curr, p))
-                seed.append(nxt); remaining.remove(nxt); curr = nxt
-            rt = seed
-            for _ in range(2):
-                rt = tsp_2opt(rt, max_iter=50)
-            routes[q] = rt
+            
+            # Probar múltiples inicializaciones para encontrar la mejor ruta del cuadrante
+            best_route = None
+            best_length = float('inf')
+            
+            # Intentar hasta 3 puntos de inicio diferentes (o todos si hay pocos puntos)
+            start_candidates = pts[:min(3, len(pts))]
+            
+            for start_point in start_candidates:
+                start = start_point
+                remaining = set(pts); remaining.remove(start)
+                curr = start; seed = [curr]
+                while remaining:
+                    nxt = min(remaining, key=lambda p: eucl_float(curr, p))
+                    seed.append(nxt); remaining.remove(nxt); curr = nxt
+                
+                rt = seed
+                for _ in range(3):  # Más iteraciones de 2-opt inicial
+                    rt = tsp_2opt(rt, max_iter=100)  # Más iteraciones por pasada
+                
+                # Evaluar esta ruta
+                route_length = total_path_length(rt)
+                if route_length < best_length:
+                    best_length = route_length
+                    best_route = rt[:]
+            
+            routes[q] = best_route if best_route else pts
             record_event(f'quadrant_end_{q}')
         else:
             routes[q] = pts
@@ -609,60 +640,117 @@ if __name__ == "__main__":
             print(f"Skipped {fname}: read error")
             continue
 
-        t0 = time.time()
-        if profile_flag:
-            event_enable(t0)
-        # instrumentation
-        sample_times = []
-        sample_rss = []
-        sample_cpu = []
-        stop_event = threading.Event()
-        proc = psutil.Process() if psutil else None
+        # Determinar número de repeticiones
+        num_runs = 10 if profile_flag else 1
+        all_results = []
+        all_times = []
+        best_result = None
+        best_length = float('inf')
+        
+        print(f"Processing {inst_name} ({num_runs} run{'s' if num_runs > 1 else ''})...")
+        
+        for run_idx in range(num_runs):
+            if num_runs > 1:
+                print(f"  Run {run_idx + 1}/{num_runs}...", end="")
+            
+            t0 = time.time()
+            if profile_flag and run_idx == 0:  # Solo para la primera ejecución
+                event_enable(t0)
+            
+            # instrumentation - solo para la primera ejecución si es profile
+            sample_times = []
+            sample_rss = []
+            sample_cpu = []
+            stop_event = threading.Event()
+            proc = psutil.Process() if psutil else None
 
-        def monitor(interval=0.05):
-            while not stop_event.is_set():
-                try:
-                    now = time.time() - t0
-                    rss = proc.memory_info().rss if proc else 0
-                    cpu = proc.cpu_percent(interval=None) if proc else 0
-                    sample_times.append(now)
-                    sample_rss.append(rss)
-                    sample_cpu.append(cpu)
-                except Exception:
-                    pass
-                time.sleep(interval)
+            def monitor(interval=0.05):
+                while not stop_event.is_set():
+                    try:
+                        now = time.time() - t0
+                        rss = proc.memory_info().rss if proc else 0
+                        cpu = proc.cpu_percent(interval=None) if proc else 0
+                        sample_times.append(now)
+                        sample_rss.append(rss)
+                        sample_cpu.append(cpu)
+                    except Exception:
+                        pass
+                    time.sleep(interval)
 
-        mon_thread = None
-        if profile_flag and psutil:
-            mon_thread = threading.Thread(target=monitor, daemon=True)
-            mon_thread.start()
+            mon_thread = None
+            if profile_flag and run_idx == 0 and psutil:  # Solo primera ejecución
+                mon_thread = threading.Thread(target=monitor, daemon=True)
+                mon_thread.start()
 
-        try:
-            if profile_flag and tracemalloc:
-                tracemalloc.start()
-            if profile_flag and tracker:
-                mem_tracker = tracker.SummaryTracker()
-            routes, conns, total_length, xm, ym = gsph_fc(nodes, MAX_ITER_LOCAL, EPS_FRONTIER)
-            if profile_flag and tracemalloc:
-                snap = tracemalloc.take_snapshot()
-                top = snap.statistics('lineno')[:10]
-                with open(os.path.join(outdir, 'tracemalloc_top.txt'), 'w', encoding='utf-8') as tf:
-                    for stat in top:
-                        tf.write(str(stat) + '\n')
-            if profile_flag and tracker:
-                # record a pympler summary (approx)
-                with open(os.path.join(outdir, 'pympler_summary.txt'), 'w', encoding='utf-8') as pf:
-                    for t in mem_tracker.format_diff():
-                        pf.write(str(t) + '\n')
-        except Exception as e:
-            with open(os.path.join(outdir, 'error.txt'), 'w', encoding='utf-8') as ef:
-                ef.write(str(e))
-            with open(summary_path, 'a', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow([inst_name, len(nodes), '', '', os.path.join(outdir, 'error.txt'), 'run_error'])
-            print(f"Failed {fname}: runtime error")
+            try:
+                if profile_flag and run_idx == 0 and tracemalloc:  # Solo primera ejecución
+                    tracemalloc.start()
+                if profile_flag and run_idx == 0 and tracker:  # Solo primera ejecución
+                    mem_tracker = tracker.SummaryTracker()
+                
+                routes, conns, total_length, xm, ym = gsph_fc(nodes, MAX_ITER_LOCAL, EPS_FRONTIER)
+                
+                if profile_flag and run_idx == 0 and tracemalloc:
+                    snap = tracemalloc.take_snapshot()
+                    top = snap.statistics('lineno')[:10]
+                    with open(os.path.join(outdir, 'tracemalloc_top.txt'), 'w', encoding='utf-8') as tf:
+                        for stat in top:
+                            tf.write(str(stat) + '\n')
+                if profile_flag and run_idx == 0 and tracker:
+                    # record a pympler summary (approx)
+                    with open(os.path.join(outdir, 'pympler_summary.txt'), 'w', encoding='utf-8') as pf:
+                        for t in mem_tracker.format_diff():
+                            pf.write(str(t) + '\n')
+            except Exception as e:
+                with open(os.path.join(outdir, 'error.txt'), 'w', encoding='utf-8') as ef:
+                    ef.write(str(e))
+                with open(summary_path, 'a', newline='', encoding='utf-8') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow([inst_name, len(nodes), '', '', os.path.join(outdir, 'error.txt'), 'run_error'])
+                print(f"Failed {fname}: runtime error")
+                break
+            
+            elapsed = time.time() - t0
+            
+            # Guardar datos de esta ejecución
+            all_results.append(total_length)
+            all_times.append(elapsed)
+            
+            # Actualizar mejor resultado
+            if total_length < best_length:
+                best_length = total_length
+                best_result = {
+                    'routes': routes,
+                    'conns': conns,
+                    'total_length': total_length,
+                    'xm': xm,
+                    'ym': ym,
+                    'elapsed': elapsed,
+                    'sample_times': sample_times if run_idx == 0 else [],
+                    'sample_rss': sample_rss if run_idx == 0 else [],
+                    'sample_cpu': sample_cpu if run_idx == 0 else []
+                }
+            
+            if mon_thread:
+                stop_event.set()
+                mon_thread.join(timeout=1.0)
+                
+            if num_runs > 1:
+                print(f" length={total_length:.2f}, time={elapsed:.3f}s")
+        
+        if best_result is None:
             continue
-        elapsed = time.time() - t0
+            
+        # Usar el mejor resultado para el resto del procesamiento
+        routes = best_result['routes']
+        conns = best_result['conns'] 
+        total_length = best_result['total_length']
+        xm = best_result['xm']
+        ym = best_result['ym']
+        elapsed = best_result['elapsed']
+        sample_times = best_result['sample_times']
+        sample_rss = best_result['sample_rss'] 
+        sample_cpu = best_result['sample_cpu']
         if mon_thread:
             stop_event.set()
             mon_thread.join(timeout=1.0)
@@ -683,7 +771,13 @@ if __name__ == "__main__":
         with open(res_txt, 'w', encoding='utf-8') as f:
             f.write(f"Instancia: {fname}\n")
             f.write(f"N nodes: {len(nodes)}\n")
-            f.write(f"Longitud total de la ruta: {total_length:.2f}\n")
+            if num_runs > 1:
+                f.write(f"Número de ejecuciones: {num_runs}\n")
+                f.write(f"MEJOR longitud de ruta: {total_length:.2f}\n")
+                f.write(f"Longitud promedio     : {sum(all_results)/len(all_results):.2f}\n")
+                f.write(f"Rango (min-max)       : {min(all_results):.2f} - {max(all_results):.2f}\n")
+            else:
+                f.write(f"Longitud total de la ruta: {total_length:.2f}\n")
             f.write(f"Tiempo de ejecución      : {elapsed:.3f} segundos\n")
             if profile_flag:
                 events_file = os.path.join(outdir, 'events.csv')
@@ -712,10 +806,41 @@ if __name__ == "__main__":
                     event_disable()
             f.write(f"Peak RSS (bytes)         : {int(peak_rss)}\n")
 
+        # Escribir estadísticas de múltiples ejecuciones si corresponde
+        notes = 'ok'
+        if num_runs > 1:
+            stats_file = os.path.join(outdir, 'multiple_runs_stats.txt')
+            with open(stats_file, 'w', encoding='utf-8') as sf:
+                sf.write(f"Estadísticas de {num_runs} ejecuciones:\n")
+                sf.write(f"Mejor longitud:     {min(all_results):.2f}\n")
+                sf.write(f"Peor longitud:      {max(all_results):.2f}\n")
+                sf.write(f"Longitud promedio:  {sum(all_results)/len(all_results):.2f}\n")
+                if len(all_results) > 1:
+                    variance = sum((x - sum(all_results)/len(all_results))**2 for x in all_results) / (len(all_results) - 1)
+                    std_dev = math.sqrt(variance)
+                    sf.write(f"Desviación estándar: {std_dev:.2f}\n")
+                sf.write(f"Mejor tiempo:       {min(all_times):.3f}s\n")
+                sf.write(f"Peor tiempo:        {max(all_times):.3f}s\n")
+                sf.write(f"Tiempo promedio:    {sum(all_times)/len(all_times):.3f}s\n")
+                sf.write(f"\nDetalle de todas las ejecuciones:\n")
+                for i, (length, time_taken) in enumerate(zip(all_results, all_times)):
+                    marker = " (MEJOR)" if length == min(all_results) else ""
+                    sf.write(f"Run {i+1}: length={length:.2f}, time={time_taken:.3f}s{marker}\n")
+            notes = f'best_of_{num_runs}_runs'
+
         with open(summary_path, 'a', newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile)
-            writer.writerow([inst_name, len(nodes), f"{total_length:.2f}", f"{elapsed:.3f}", png_path, 'ok'])
+            if num_runs > 1:
+                # Incluir estadísticas en el CSV
+                avg_length = sum(all_results)/len(all_results)
+                std_dev = math.sqrt(sum((x - avg_length)**2 for x in all_results) / (len(all_results) - 1)) if len(all_results) > 1 else 0
+                writer.writerow([inst_name, len(nodes), f"{total_length:.2f}", f"{elapsed:.3f}", png_path, f'{notes}|avg={avg_length:.2f}|std={std_dev:.2f}'])
+            else:
+                writer.writerow([inst_name, len(nodes), f"{total_length:.2f}", f"{elapsed:.3f}", png_path, notes])
 
-        print(f"Processed {inst_name}: nodes={len(nodes)}, length={total_length:.2f}, time={elapsed:.2f}s")
+        if num_runs > 1:
+            print(f"Processed {inst_name}: nodes={len(nodes)}, BEST={total_length:.2f} (avg={sum(all_results)/len(all_results):.2f}), best_time={elapsed:.3f}s")
+        else:
+            print(f"Processed {inst_name}: nodes={len(nodes)}, length={total_length:.2f}, time={elapsed:.2f}s")
 
     print('\nAll done. Summary written to', summary_path)

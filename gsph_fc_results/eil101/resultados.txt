@@ -1,0 +1,8 @@
+Instancia: eil101.tsp
+N nodes: 101
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 634.00
+Longitud promedio     : 646.60
+Rango (min-max)       : 634.00 - 660.00
+Tiempo de ejecución      : 3.269 segundos
+Peak RSS (bytes)         : 232341504

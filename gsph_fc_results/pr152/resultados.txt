@@ -1,0 +1,8 @@
+Instancia: pr152.tsp
+N nodes: 152
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 74117.00
+Longitud promedio     : 75267.80
+Rango (min-max)       : 74117.00 - 75525.00
+Tiempo de ejecución      : 1.888 segundos
+Peak RSS (bytes)         : 232849408

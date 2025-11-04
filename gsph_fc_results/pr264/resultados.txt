@@ -1,0 +1,8 @@
+Instancia: pr264.tsp
+N nodes: 264
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 52198.00
+Longitud promedio     : 54742.00
+Rango (min-max)       : 52198.00 - 56504.00
+Tiempo de ejecución      : 8.302 segundos
+Peak RSS (bytes)         : 234340352

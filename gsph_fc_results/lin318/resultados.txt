@@ -1,0 +1,8 @@
+Instancia: lin318.tsp
+N nodes: 318
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 42863.00
+Longitud promedio     : 43700.80
+Rango (min-max)       : 42863.00 - 44175.00
+Tiempo de ejecución      : 6.384 segundos
+Peak RSS (bytes)         : 230866944

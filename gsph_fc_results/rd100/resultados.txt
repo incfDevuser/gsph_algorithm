@@ -1,0 +1,8 @@
+Instancia: rd100.tsp
+N nodes: 100
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 7911.00
+Longitud promedio     : 8167.50
+Rango (min-max)       : 7911.00 - 8343.00
+Tiempo de ejecución      : 1.061 segundos
+Peak RSS (bytes)         : 236535808

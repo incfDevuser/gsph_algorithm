@@ -1,0 +1,8 @@
+Instancia: bier127.tsp
+N nodes: 127
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 120590.00
+Longitud promedio     : 122296.50
+Rango (min-max)       : 120590.00 - 123230.00
+Tiempo de ejecución      : 2.091 segundos
+Peak RSS (bytes)         : 234848256

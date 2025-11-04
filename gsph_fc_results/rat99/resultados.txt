@@ -1,0 +1,8 @@
+Instancia: rat99.tsp
+N nodes: 99
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 1211.00
+Longitud promedio     : 1219.90
+Rango (min-max)       : 1211.00 - 1231.00
+Tiempo de ejecución      : 1.292 segundos
+Peak RSS (bytes)         : 238010368

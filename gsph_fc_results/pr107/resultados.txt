@@ -1,0 +1,8 @@
+Instancia: pr107.tsp
+N nodes: 107
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 44765.00
+Longitud promedio     : 44860.00
+Rango (min-max)       : 44765.00 - 44955.00
+Tiempo de ejecución      : 1.161 segundos
+Peak RSS (bytes)         : 231981056

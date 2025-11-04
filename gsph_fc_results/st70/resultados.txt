@@ -1,0 +1,8 @@
+Instancia: st70.tsp
+N nodes: 70
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 680.00
+Longitud promedio     : 689.00
+Rango (min-max)       : 680.00 - 700.00
+Tiempo de ejecución      : 2.751 segundos
+Peak RSS (bytes)         : 225148928

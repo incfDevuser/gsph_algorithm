@@ -1,0 +1,17 @@
+                               types |   # objects |   total size
+==================================== | =========== | ============
+                               tuple |       35880 |      2.73 MB
+                                list |       10836 |      1.22 MB
+                                 str |       10835 |    685.51 KB
+                  _io.BufferedWriter |           2 |    128.33 KB
+                                 int |        2387 |     65.27 KB
+                               float |          66 |      1.55 KB
+                                dict |           7 |      1.18 KB
+               tracemalloc.Statistic |          10 |    560     B
+               tracemalloc.Traceback |          10 |    480     B
+                   _io.TextIOWrapper |           2 |    432     B
+                                code |           1 |    376     B
+               function (store_info) |           1 |    168     B
+                          _io.FileIO |           2 |    128     B
+  encodings.utf_8.IncrementalEncoder |           2 |     96     B
+                                cell |           2 |     80     B

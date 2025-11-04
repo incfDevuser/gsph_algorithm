@@ -1,0 +1,8 @@
+Instancia: pr76.tsp
+N nodes: 76
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 108234.00
+Longitud promedio     : 110634.20
+Rango (min-max)       : 108234.00 - 112058.00
+Tiempo de ejecución      : 1.107 segundos
+Peak RSS (bytes)         : 235012096

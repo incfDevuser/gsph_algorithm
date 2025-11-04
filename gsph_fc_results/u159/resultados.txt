@@ -1,0 +1,8 @@
+Instancia: u159.tsp
+N nodes: 159
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 42080.00
+Longitud promedio     : 43239.10
+Rango (min-max)       : 42080.00 - 44046.00
+Tiempo de ejecución      : 2.185 segundos
+Peak RSS (bytes)         : 225017856

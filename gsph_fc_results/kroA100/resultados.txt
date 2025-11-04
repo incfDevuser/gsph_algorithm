@@ -1,0 +1,8 @@
+Instancia: kroA100.tsp
+N nodes: 100
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 21282.00
+Longitud promedio     : 21556.30
+Rango (min-max)       : 21282.00 - 21922.00
+Tiempo de ejecución      : 0.972 segundos
+Peak RSS (bytes)         : 235651072

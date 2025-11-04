@@ -1,0 +1,8 @@
+Instancia: kroB200.tsp
+N nodes: 200
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 30097.00
+Longitud promedio     : 30573.20
+Rango (min-max)       : 30097.00 - 30767.00
+Tiempo de ejecución      : 2.836 segundos
+Peak RSS (bytes)         : 238125056

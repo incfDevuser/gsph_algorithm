@@ -1,0 +1,8 @@
+Instancia: pr144.tsp
+N nodes: 144
+Número de ejecuciones: 10
+MEJOR longitud de ruta: 58590.00
+Longitud promedio     : 64581.90
+Rango (min-max)       : 58590.00 - 65884.00
+Tiempo de ejecución      : 1.320 segundos
+Peak RSS (bytes)         : 236486656
