@@ -1,0 +1,9 @@
+numpy
+scipy
+matplotlib
+psutil
+memory-profiler
+pympler
+guppy3
+tracemalloc
+pylint

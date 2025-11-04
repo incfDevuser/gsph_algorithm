@@ -2,9 +2,28 @@ import os
 import time
 import random
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import sys
 from math import hypot
 from scipy.spatial import cKDTree 
+try:
+    import psutil
+except Exception:
+    psutil = None
+try:
+    import tracemalloc
+except Exception:
+    tracemalloc = None
+try:
+    from pympler import tracker
+except Exception:
+    tracker = None
+try:
+    from memory_profiler import memory_usage
+except Exception:
+    memory_usage = None
 
 EPS_FRONTIER      = 5
 MAX_ITER_LOCAL    = 800
@@ -20,6 +39,26 @@ OR_OPT_MAX_L      = 1
 OR_OPT_MOVE_LIMIT = 3000 
 ILS_ITERS         = 1     
 SKIP_PROB_2OPT    = 0.35 
+
+_event_enabled = False
+_events = []
+_events_t0 = None
+def event_enable(t0=None):
+    global _event_enabled, _events, _events_t0
+    _events = []
+    _events_t0 = t0 if t0 is not None else time.time()
+    _event_enabled = True
+def event_disable():
+    global _event_enabled
+    _event_enabled = False
+def record_event(name):
+    try:
+        if not _event_enabled:
+            return
+        _events.append((time.time() - _events_t0, name))
+    except Exception:
+        pass
+
 
 def read_tsplib(filename):
     nodes = []
@@ -85,8 +124,10 @@ def tsp_2opt(points, max_iter=50):
     2-opt simple para PATH abierto usando euclidean_distance.
     Devuelve la ruta mejorada.
     """
+    record_event('tsp_2opt_entry')
     n = len(points)
     if n < 3:
+        record_event('tsp_2opt_exit')
         return points[:]
     route = points[:]
     it = 0
@@ -103,6 +144,7 @@ def tsp_2opt(points, max_iter=50):
                     route[i:k+1] = reversed(route[i:k+1])
                     improved = True
         it += 1
+    record_event('tsp_2opt_exit')
     return route
 def build_distance_matrix(points):
     P = np.asarray(points, dtype=float)
@@ -186,6 +228,7 @@ def ensure_valid_perm(perm, N, D):
         perm2.insert(best_pos, m)
     return perm2
 def two_opt_dlb(perm, D, cand, max_sweeps=1, skip_prob=SKIP_PROB_2OPT, deadline=None):
+    record_event('two_opt_dlb_entry')
     N = D.shape[0]
     n = len(perm)
     pos = [-1]*N                 
@@ -194,8 +237,10 @@ def two_opt_dlb(perm, D, cand, max_sweeps=1, skip_prob=SKIP_PROB_2OPT, deadline=
     dontlook = [False]*N
 
     for _ in range(max_sweeps):
+        record_event('two_opt_sweep_start')
         improved = True
         while improved:
+            record_event('two_opt_iteration_start')
             improved = False
             for a in range(n):
                 if deadline and time.monotonic() > deadline:
@@ -228,10 +273,12 @@ def two_opt_dlb(perm, D, cand, max_sweeps=1, skip_prob=SKIP_PROB_2OPT, deadline=
                     improved = True
                 else:
                     dontlook[a1] = True
+    record_event('two_opt_dlb_exit')
     return perm
 
 def or_opt_move(perm, D, cand, Lmax=OR_OPT_MAX_L, move_limit=OR_OPT_MOVE_LIMIT, deadline=None):
     """Mueve bloques cortos en tour circular. L=1 por defecto para máxima velocidad."""
+    record_event('or_opt_move_entry')
     if Lmax <= 0:
         return perm
     N = D.shape[0]
@@ -245,6 +292,7 @@ def or_opt_move(perm, D, cand, Lmax=OR_OPT_MAX_L, move_limit=OR_OPT_MOVE_LIMIT, 
     moves = 0
     improved = True
     while improved and moves < move_limit:
+        record_event('or_opt_outer_loop')
         improved = False
         for i in range(n):
             if deadline and time.monotonic() > deadline:
@@ -296,6 +344,7 @@ def or_opt_move(perm, D, cand, Lmax=OR_OPT_MAX_L, move_limit=OR_OPT_MOVE_LIMIT, 
                     break
             if improved or moves >= move_limit:
                 break
+    record_event('or_opt_move_exit')
     return perm
 
 def double_bridge_on_perm(perm):
@@ -310,7 +359,9 @@ def double_bridge_on_perm(perm):
 
 def polish_fast(nodes, route):
     """Pulido con presupuesto de tiempo: 2-opt(DLB) → Or-opt → 2-opt(DLB) → ILS."""
+    record_event('polish_fast_entry')
     if len(route) < 10:
+        record_event('polish_fast_short_exit')
         return route[:]
     D = build_distance_matrix(nodes)
     cand = build_candidate_sets(nodes, m=CAND_M, knn_k=CAND_KNN, use_delaunay=USE_DELAUNAY)
@@ -325,13 +376,14 @@ def polish_fast(nodes, route):
     best = perm[:]; best_len = tour_len_from_perm(best, D)
     for _ in range(max(0, ILS_ITERS)):
         if time.monotonic() > deadline: break
+        record_event('ils_double_bridge')
         kick = double_bridge_on_perm(best)
         kick = ensure_valid_perm(kick, len(nodes), D)
         kick = two_opt_dlb(kick, D, cand, max_sweeps=1, deadline=deadline)
         L = tour_len_from_perm(kick, D)
         if L < best_len:
             best, best_len = kick[:], L
-
+    record_event('polish_fast_exit')
     return perm_to_route(best, nodes)
 def _concat_routes_q_order(routes):
     order = ['Q1','Q2','Q4','Q3']
@@ -350,10 +402,12 @@ def _concat_routes_q_order(routes):
         last = seq[-1] if seq else None
     return seq
 def gsph_fc(nodes, MAX_ITER_LOCAL=800 ,EPS_FRONTIER=5):
+    record_event('gsph_fc_entry')
     quads, xmid, ymid = subdivide_quadrants(nodes)
     routes = {}
     for q, pts in quads.items():
         if len(pts) > 1:
+            record_event(f'quadrant_start_{q}')
             start = pts[0]
             remaining = set(pts); remaining.remove(start)
             curr = start; seed = [curr]
@@ -364,6 +418,7 @@ def gsph_fc(nodes, MAX_ITER_LOCAL=800 ,EPS_FRONTIER=5):
             for _ in range(2):
                 rt = tsp_2opt(rt, max_iter=50)
             routes[q] = rt
+            record_event(f'quadrant_end_{q}')
         else:
             routes[q] = pts
 
@@ -381,10 +436,13 @@ def gsph_fc(nodes, MAX_ITER_LOCAL=800 ,EPS_FRONTIER=5):
             connections.append((a,b))
             inter_len += d
     initial_tour = _concat_routes_q_order(routes)
+    record_event('polish_start')
     improved_tour = polish_fast(nodes, initial_tour)
+    record_event('polish_end')
     total_len = total_tour_length(improved_tour)
 
     routes_out = {'QALL': improved_tour}
+    record_event('gsph_fc_exit')
     return routes_out, connections, total_len, xmid, ymid
 
 def plot_gsph_fc(routes, conns, xmid, ymid, save_path=None):
@@ -456,26 +514,208 @@ def plot_gsph_fc(routes, conns, xmid, ymid, save_path=None):
     plt.close()
 
 if __name__ == "__main__":
+    import csv
+    import threading
+    import math
+    import matplotlib.pyplot as _plt
+
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    tsp_path = os.path.join(BASE_DIR, 'eil101.tsp')
-    nodes = read_tsplib(tsp_path)
-    t0 = time.time()
-    routes, conns, total_length, xm, ym = gsph_fc(nodes, MAX_ITER_LOCAL, EPS_FRONTIER)
-    t_heur = time.time() - t0
+    instances_dir = os.path.abspath(BASE_DIR)
+    if not os.path.isdir(instances_dir):
+        print(f"Instances directory not found: {instances_dir}")
+        raise SystemExit(1)
 
-    with open(os.path.join(RESULTS_DIR, "resultados.txt"), "w", encoding="utf-8") as f:
-        f.write("── RESULTADOS GSPH–FC (RÁPIDO) ──\n")
-        f.write(f"Instancia: {os.path.basename(tsp_path)}\n")
-        f.write(f"Longitud total de la ruta: {total_length:.2f}\n")
-        f.write(f"Tiempo de ejecución      : {t_heur:.3f} segundos\n")
-        f.write(f"Time budget (pulido)     : {TIME_BUDGET_S:.2f} s\n")
-        f.write(f"cand_m={CAND_M}, knn_k={CAND_KNN}, 2opt_sweeps={MAX_SWEEPS_2OPT}, "
-                f"orL={OR_OPT_MAX_L}, ILS={ILS_ITERS}\n")
+    files = [f for f in os.listdir(instances_dir) if f.lower().endswith('.tsp')]
+    files.sort()
 
-    print("\n── RESULTADOS GSPH–FC (RÁPIDO) ──")
-    print(f"Instancia: {os.path.basename(tsp_path)}")
-    print(f"Longitud total de la ruta: {total_length:.2f}")
-    print(f"Tiempo de ejecución      : {t_heur:.3f} segundos")
-    print(f"(pulido con budget ~{TIME_BUDGET_S}s)")
+    target_arg = None
+    profile_flag = False
+    if len(sys.argv) > 1:
+        args = [a for a in sys.argv[1:]]
+        if '--profile' in args:
+            profile_flag = True
+            args.remove('--profile')
+        if args:
+            target_arg = args[0]
+        if target_arg in ('-h', '--help'):
+            print('Usage: python GSPH_BASE.py [instance_name|file.tsp]')
+            print('If no argument is given, all instances under', instances_dir, 'are processed.')
+            raise SystemExit(0)
 
-    plot_gsph_fc(routes, conns, xm, ym, save_path=os.path.join(RESULTS_DIR, "grafico_gsph_fc.png"))
+    if target_arg:
+        if target_arg.lower().endswith('.tsp'):
+            candidate = target_arg if os.path.isabs(target_arg) else os.path.join(instances_dir, target_arg)
+            if os.path.isfile(candidate):
+                files = [os.path.basename(candidate)]
+            else:
+                print('Instance file not found:', candidate)
+                raise SystemExit(1)
+        else:
+            candidate = target_arg + '.tsp'
+            if candidate in files:
+                files = [candidate]
+            else:
+                matches = [f for f in files if target_arg.lower() in f.lower()]
+                if len(matches) == 1:
+                    files = matches
+                elif len(matches) > 1:
+                    print('Multiple matches for', target_arg, ':', matches)
+                    raise SystemExit(1)
+                else:
+                    print('No instance found matching', target_arg)
+                    raise SystemExit(1)
+
+    limit = os.getenv('GSPH_LIMIT')
+    try:
+        limit = int(limit) if limit else None
+    except Exception:
+        limit = None
+    if limit:
+        files = files[:limit]
+
+    summary_path = os.path.join(RESULTS_DIR, 'summary.csv')
+    with open(summary_path, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['instance', 'n_nodes', 'total_length', 'time_seconds', 'route_png', 'notes'])
+
+    resources_summary = []
+
+    def plot_resource_times(times, rss, cpu, outpath):
+        if not times: return
+        fig, ax1 = _plt.subplots(figsize=(8,4))
+        ax1.plot(times, [r/1024/1024 for r in rss], 'r-', label='RSS (MB)')
+        ax1.set_xlabel('time (s)')
+        ax1.set_ylabel('RSS (MB)', color='r')
+        ax2 = ax1.twinx()
+        ax2.plot(times, cpu, 'b--', label='CPU%')
+        ax2.set_ylabel('CPU %', color='b')
+        fig.tight_layout()
+        _plt.savefig(outpath, bbox_inches='tight')
+        _plt.close()
+
+    for fname in files:
+        inst_name = os.path.splitext(fname)[0]
+        outdir = os.path.join(RESULTS_DIR, inst_name)
+        os.makedirs(outdir, exist_ok=True)
+        tsp_path = os.path.join(instances_dir, fname)
+        try:
+            nodes = read_tsplib(tsp_path)
+        except Exception as e:
+            with open(os.path.join(outdir, 'error.txt'), 'w', encoding='utf-8') as ef:
+                ef.write(str(e))
+            with open(summary_path, 'a', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow([inst_name, 0, '', '', os.path.join(outdir, 'error.txt'), 'read_error'])
+            print(f"Skipped {fname}: read error")
+            continue
+
+        t0 = time.time()
+        if profile_flag:
+            event_enable(t0)
+        # instrumentation
+        sample_times = []
+        sample_rss = []
+        sample_cpu = []
+        stop_event = threading.Event()
+        proc = psutil.Process() if psutil else None
+
+        def monitor(interval=0.05):
+            while not stop_event.is_set():
+                try:
+                    now = time.time() - t0
+                    rss = proc.memory_info().rss if proc else 0
+                    cpu = proc.cpu_percent(interval=None) if proc else 0
+                    sample_times.append(now)
+                    sample_rss.append(rss)
+                    sample_cpu.append(cpu)
+                except Exception:
+                    pass
+                time.sleep(interval)
+
+        mon_thread = None
+        if profile_flag and psutil:
+            mon_thread = threading.Thread(target=monitor, daemon=True)
+            mon_thread.start()
+
+        try:
+            if profile_flag and tracemalloc:
+                tracemalloc.start()
+            if profile_flag and tracker:
+                mem_tracker = tracker.SummaryTracker()
+            routes, conns, total_length, xm, ym = gsph_fc(nodes, MAX_ITER_LOCAL, EPS_FRONTIER)
+            if profile_flag and tracemalloc:
+                snap = tracemalloc.take_snapshot()
+                top = snap.statistics('lineno')[:10]
+                with open(os.path.join(outdir, 'tracemalloc_top.txt'), 'w', encoding='utf-8') as tf:
+                    for stat in top:
+                        tf.write(str(stat) + '\n')
+            if profile_flag and tracker:
+                # record a pympler summary (approx)
+                with open(os.path.join(outdir, 'pympler_summary.txt'), 'w', encoding='utf-8') as pf:
+                    for t in mem_tracker.format_diff():
+                        pf.write(str(t) + '\n')
+        except Exception as e:
+            with open(os.path.join(outdir, 'error.txt'), 'w', encoding='utf-8') as ef:
+                ef.write(str(e))
+            with open(summary_path, 'a', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow([inst_name, len(nodes), '', '', os.path.join(outdir, 'error.txt'), 'run_error'])
+            print(f"Failed {fname}: runtime error")
+            continue
+        elapsed = time.time() - t0
+        if mon_thread:
+            stop_event.set()
+            mon_thread.join(timeout=1.0)
+        if profile_flag and sample_times:
+            res_csv = os.path.join(outdir, 'resources.csv')
+            with open(res_csv, 'w', newline='', encoding='utf-8') as rc:
+                rwriter = csv.writer(rc)
+                rwriter.writerow(['time_s', 'rss_bytes', 'cpu_percent'])
+                for a,b,c in zip(sample_times, sample_rss, sample_cpu):
+                    rwriter.writerow([f"{a:.4f}", int(b), f"{c:.2f}"])
+            plot_resource_times(sample_times, sample_rss, sample_cpu, os.path.join(outdir, 'resources.png'))
+        peak_rss = max(sample_rss) if sample_rss else (proc.memory_info().rss if proc else 0)
+
+        png_path = os.path.join(outdir, f"grafico_{inst_name}.png")
+        plot_gsph_fc(routes, conns, xm, ym, save_path=png_path)
+
+        res_txt = os.path.join(outdir, 'resultados.txt')
+        with open(res_txt, 'w', encoding='utf-8') as f:
+            f.write(f"Instancia: {fname}\n")
+            f.write(f"N nodes: {len(nodes)}\n")
+            f.write(f"Longitud total de la ruta: {total_length:.2f}\n")
+            f.write(f"Tiempo de ejecución      : {elapsed:.3f} segundos\n")
+            if profile_flag:
+                events_file = os.path.join(outdir, 'events.csv')
+                try:
+                    with open(events_file, 'w', newline='', encoding='utf-8') as ef:
+                        ew = csv.writer(ef)
+                        ew.writerow(['time_s','event'])
+                        for t,e in _events:
+                            ew.writerow([f"{t:.6f}", e])
+                    try:
+                        times = [t for t,_ in _events]
+                        labels = [e for _,e in _events]
+                        fig, ax = _plt.subplots(figsize=(10, max(2, len(times)*0.15)))
+                        ax.hlines(1, 0, max(times) if times else 1, color='white')
+                        for i, (tt, ev) in enumerate(_events):
+                            ax.plot(tt, 1, marker='o')
+                            ax.text(tt, 1.02, ev, rotation=45, ha='left', va='bottom', fontsize=8)
+                        ax.set_yticks([])
+                        ax.set_xlabel('time (s)')
+                        _plt.tight_layout()
+                        _plt.savefig(os.path.join(outdir, 'events_timeline.png'), bbox_inches='tight')
+                        _plt.close()
+                    except Exception:
+                        pass
+                finally:
+                    event_disable()
+            f.write(f"Peak RSS (bytes)         : {int(peak_rss)}\n")
+
+        with open(summary_path, 'a', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow([inst_name, len(nodes), f"{total_length:.2f}", f"{elapsed:.3f}", png_path, 'ok'])
+
+        print(f"Processed {inst_name}: nodes={len(nodes)}, length={total_length:.2f}, time={elapsed:.2f}s")
+
+    print('\nAll done. Summary written to', summary_path)
