@@ -1,0 +1,16 @@
+# Dependencias para experimentos TSP - GSPH Algorithm
+
+# Computación numérica
+numpy>=1.21.0
+scipy>=1.7.0
+
+# Visualización
+matplotlib>=3.4.0
+
+# Profiling y monitoreo (opcional)
+psutil>=5.8.0
+pympler>=1.0
+memory-profiler>=0.60.0
+
+# Utilidades
+tqdm>=4.62.0

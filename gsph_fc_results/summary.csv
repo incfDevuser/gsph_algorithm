@@ -1,2 +1,0 @@
-instance,n_nodes,total_length,time_seconds,route_png,notes
-kroA100,100,21282.00,0.972,gsph_fc_results/kroA100/grafico_kroA100.png,best_of_10_runs|avg=21556.30|std=253.70

@@ -1,8 +1,0 @@
-Instancia: ch150.tsp
-N nodes: 150
-Número de ejecuciones: 10
-MEJOR longitud de ruta: 6555.00
-Longitud promedio     : 6695.90
-Rango (min-max)       : 6555.00 - 6806.00
-Tiempo de ejecución      : 1.994 segundos
-Peak RSS (bytes)         : 228179968

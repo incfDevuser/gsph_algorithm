@@ -1,8 +1,0 @@
-Instancia: lin105.tsp
-N nodes: 105
-Número de ejecuciones: 10
-MEJOR longitud de ruta: 14379.00
-Longitud promedio     : 14570.10
-Rango (min-max)       : 14379.00 - 14726.00
-Tiempo de ejecución      : 1.017 segundos
-Peak RSS (bytes)         : 235339776

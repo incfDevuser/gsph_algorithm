@@ -1,8 +1,0 @@
-Instancia: gil262.tsp
-N nodes: 262
-Número de ejecuciones: 10
-MEJOR longitud de ruta: 2447.00
-Longitud promedio     : 2478.00
-Rango (min-max)       : 2447.00 - 2509.00
-Tiempo de ejecución      : 4.536 segundos
-Peak RSS (bytes)         : 245727232

@@ -1,8 +1,0 @@
-Instancia: eil76.tsp
-N nodes: 76
-Número de ejecuciones: 10
-MEJOR longitud de ruta: 544.00
-Longitud promedio     : 550.80
-Rango (min-max)       : 544.00 - 557.00
-Tiempo de ejecución      : 0.827 segundos
-Peak RSS (bytes)         : 220561408

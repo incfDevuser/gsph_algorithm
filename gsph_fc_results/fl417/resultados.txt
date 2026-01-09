@@ -1,8 +1,0 @@
-Instancia: fl417.tsp
-N nodes: 417
-Número de ejecuciones: 10
-MEJOR longitud de ruta: 12698.00
-Longitud promedio     : 13260.30
-Rango (min-max)       : 12698.00 - 13641.00
-Tiempo de ejecución      : 7.048 segundos
-Peak RSS (bytes)         : 244842496

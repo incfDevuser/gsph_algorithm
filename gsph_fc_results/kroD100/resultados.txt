@@ -1,8 +1,0 @@
-Instancia: kroD100.tsp
-N nodes: 100
-Número de ejecuciones: 10
-MEJOR longitud de ruta: 21446.00
-Longitud promedio     : 21707.50
-Rango (min-max)       : 21446.00 - 21799.00
-Tiempo de ejecución      : 0.945 segundos
-Peak RSS (bytes)         : 225296384

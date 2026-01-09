@@ -1,5 +1,0 @@
-Instancia: kroA150.tsp
-N nodes: 150
-Longitud total de la ruta: 28261.00
-Tiempo de ejecución      : 2.623 segundos
-Peak RSS (bytes)         : 218333184

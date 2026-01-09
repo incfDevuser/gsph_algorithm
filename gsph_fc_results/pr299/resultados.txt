@@ -1,8 +1,0 @@
-Instancia: pr299.tsp
-N nodes: 299
-Número de ejecuciones: 10
-MEJOR longitud de ruta: 48749.00
-Longitud promedio     : 49889.30
-Rango (min-max)       : 48749.00 - 50839.00
-Tiempo de ejecución      : 8.521 segundos
-Peak RSS (bytes)         : 237748224

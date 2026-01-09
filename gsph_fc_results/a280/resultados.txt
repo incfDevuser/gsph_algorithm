@@ -1,5 +1,0 @@
-Instancia: a280.tsp
-N nodes: 280
-Longitud total de la ruta: 2980.00
-Tiempo de ejecución      : 2.848 segundos
-Peak RSS (bytes)         : 229605376

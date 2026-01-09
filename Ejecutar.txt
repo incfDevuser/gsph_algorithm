@@ -1,0 +1,9 @@
+source .venv/bin/activate
+
+cd experiments/algorithms
+
+python3 GSPH_BASE.py berlin52
+
+python3 GSPH_BASE.py --profile berlin52
+
+GSPH_LIMIT=5 python3 GSPH_BASE.py

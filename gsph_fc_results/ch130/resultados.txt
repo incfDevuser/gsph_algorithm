@@ -1,8 +1,0 @@
-Instancia: ch130.tsp
-N nodes: 130
-Número de ejecuciones: 10
-MEJOR longitud de ruta: 6153.00
-Longitud promedio     : 6265.00
-Rango (min-max)       : 6153.00 - 6341.00
-Tiempo de ejecución      : 1.924 segundos
-Peak RSS (bytes)         : 236650496

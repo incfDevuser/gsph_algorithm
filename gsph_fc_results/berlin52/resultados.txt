@@ -1,8 +1,0 @@
-Instancia: berlin52.tsp
-N nodes: 52
-Número de ejecuciones: 10
-MEJOR longitud de ruta: 7708.00
-Longitud promedio     : 7911.10
-Rango (min-max)       : 7708.00 - 8089.00
-Tiempo de ejecución      : 0.603 segundos
-Peak RSS (bytes)         : 228245504

@@ -1,8 +1,0 @@
-Instancia: pr226.tsp
-N nodes: 226
-Número de ejecuciones: 10
-MEJOR longitud de ruta: 85729.00
-Longitud promedio     : 85904.00
-Rango (min-max)       : 85729.00 - 86539.00
-Tiempo de ejecución      : 2.657 segundos
-Peak RSS (bytes)         : 209715200

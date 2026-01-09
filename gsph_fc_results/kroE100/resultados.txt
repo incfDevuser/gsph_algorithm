@@ -1,8 +1,0 @@
-Instancia: kroE100.tsp
-N nodes: 100
-Número de ejecuciones: 10
-MEJOR longitud de ruta: 22084.00
-Longitud promedio     : 22577.10
-Rango (min-max)       : 22084.00 - 22986.00
-Tiempo de ejecución      : 0.892 segundos
-Peak RSS (bytes)         : 229720064
