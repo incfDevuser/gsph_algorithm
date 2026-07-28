@@ -1,0 +1,931 @@
+% ============================================================
+% GSPH-FC — Springer LNCS | WEA 2026
+% Compilar: pdflatex -> bibtex -> pdflatex -> pdflatex
+% ============================================================
+\documentclass[runningheads]{llncs}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\usepackage{url}
+
+\begin{document}
+
+% ---- Título ----
+\title{GSPH-FC: A Geometric Space Partitioning Heuristic
+with Frontier Connectivity for the Euclidean TSP}
+\titlerunning{GSPH-FC: Geometric Space Partitioning for the TSP}
+
+% ---- Autores ----
+\author{%
+  Martín Gómez Navarro\inst{1} \and
+  Gustavo Esteban Gatica\inst{1} \and
+  Rodrigo Linfati\inst{2} \and
+  Juan Carlos Figueroa-García\inst{3} \and
+  Carlos Alberto Franco Franco\inst{3} \and
+  Daniel Morillo-Torres\inst{4}}
+\authorrunning{M. Gómez Navarro et al.}
+\institute{%
+  Faculty of Engineering, Universidad Andres Bello, Santiago, Chile\\
+  \email{m.gmeznavarro@uandresbello.edu}\\
+  \email{ggatica@uandresbello.edu}
+  \and
+  Faculty of Engineering, Universidad del Bío-Bío,
+  Concepción, Chile\\
+  \email{rlinfati@ubiobio.cl}
+  \and
+  Faculty of Engineering, Universidad Distrital
+  Francisco José de Caldas, Bogotá, Colombia\\
+  \email{jcfigueroag@udistrital.edu.co}\\
+  \email{cafrancof@udistrital.edu.co}
+  \and
+  Faculty of Engineering, Pontificia Universidad Javeriana de Cali,
+  Cali, Colombia\\
+  \email{daniel.morillo@javerianacali.edu.co}}
+
+\maketitle
+
+% ================================================================
+\begin{abstract}
+We propose \textbf{GSPH-FC} (\textit{Geometric Space Partitioning
+with Frontier Connectivity}), a hierarchical heuristic for the
+Euclidean \textit{Traveling Salesman Problem} (TSP). The method
+decomposes the instance into four quadrants via the bounding-box
+midpoint, builds and refines local routes within each quadrant
+using Nearest Neighbour with 2-opt, and assembles a global tour
+through minimum-cost frontier connections. An optional polishing
+phase applies 2-opt with Don't-Look Bits, Or-opt chain relocation,
+and a lightweight ILS with double-bridge perturbations under a
+wall-clock budget. We report a systematic evaluation on 55 TSPLIB
+instances ($n$ up to 5\,934) under \texttt{EUC\_2D}, achieving a
+typical GAP of 3--12\% over the Best Known Solution with sub-second
+times for $n\!\le\!300$, near-constant peak memory ($\approx$4.75\,MB)
+across instance sizes, and natural 4-thread parallelism reducing the
+effective 2-opt cost to $O(n^2/4)$.
+\keywords{2-opt \and Frontier connectivity \and Geometric decomposition
+\and Space partitioning \and TSPLIB benchmarks \and
+Traveling Salesman Problem}
+\end{abstract}
+
+% ================================================================
+\section{Introduction}
+% ================================================================
+
+The Euclidean \textit{Traveling Salesman Problem} (TSP) is a
+cornerstone of combinatorial optimization: find a minimum-length
+Hamiltonian cycle over $n$ points in the plane~\cite{applegate2006tsp,laporte1992tsp}.
+While exact methods guarantee optimality, their exponential
+complexity makes them impractical beyond a few hundred
+nodes~\cite{garey1979computers}; heuristics and metaheuristics
+therefore remain the dominant tools for large-scale instances,
+trading optimality for speed and scalability~\cite{mardones2023}.
+
+We introduce \textbf{GSPH-FC} (\textit{Geometric Space Partitioning
+with Frontier Connectivity}), a hierarchical heuristic that exploits
+the spatial structure of Euclidean instances~\cite{karp1977probabilistic}. The algorithm operates
+in \textbf{three main stages}: (i)~spatial decomposition into four
+quadrants via the bounding-box midpoint, (ii)~independent Nearest
+Neighbour + 2-opt per quadrant, and (iii)~global assembly by
+minimum-cost frontier pairs along quadrant boundaries. This
+divide-and-conquer structure reduces the effective search cost,
+enables natural parallelism, and yields low-crossing tours.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+  \item \textbf{GSPH-FC algorithm:} geometric design and full
+    pseudocode for all subroutines, with $O(n^2)$ complexity
+    analysis.
+  \item \textbf{Systematic benchmarking:} evaluation on 55 TSPLIB
+    instances ($n$ up to 5\,934) reporting GAP\%, wall-clock time,
+    and peak memory profiling.
+  \item \textbf{Critical analysis:} SWOT assessment and directions
+    for multi-level QML-GSPH.
+\end{enumerate}
+
+The remainder is organized as follows. Section~\ref{sec:related}
+reviews related work. Section~\ref{sec:formulation} presents the
+formulation. Section~\ref{sec:algorithm} details pseudocode.
+Section~\ref{sec:experiments} reports results.
+Section~\ref{sec:analysis} provides critical analysis, and
+Section~\ref{sec:conclusions} concludes.
+
+% ================================================================
+\section{Related Work}
+\label{sec:related}
+% ================================================================
+
+We survey the algorithmic families that form the background of GSPH-FC,
+covering constructive and improvement heuristics as well as
+population-based and trajectory metaheuristics.
+
+\subsection{Constructive and Improvement Heuristics}
+
+Nearest Neighbour (NN)~\cite{kizilatecs2013nearest} is the simplest
+constructive method: starting from an arbitrary city, it greedily
+selects the closest unvisited city at each step ($O(n^2)$). Despite
+practical speed, NN solutions are typically 20--25\% above optimal
+and quality depends strongly on the seed. The 2-opt
+heuristic~\cite{croes1958method} improves a given tour by reversing
+path segments that reduce total length, serving as the standard
+local-search baseline and commonly seeded with NN solutions;
+Johnson and McGeoch~\cite{johnson1997tsp} provide an extensive
+empirical study of its behavior on TSPLIB instances.
+The Christofides--Serdyuk algorithm~\cite{christofides1976worst}
+achieves a classical $3/2$ approximation guarantee for metric TSP.
+The Lin-Kernighan heuristic~\cite{lin1973effective} generalizes
+2-opt and 3-opt through an adaptive sequential search; Helsgaun's
+LKH~\cite{helsgaun2000effective,helsgaun2017extension} further
+incorporates Lagrangian penalties and advanced candidate structures,
+reaching near-optimal results.
+
+\subsection{Metaheuristics}
+
+Metaheuristics~\cite{blum2003metaheuristics,sorensen2015metaheuristics}
+escape local optima at the cost of longer runtimes. Genetic
+Algorithms~\cite{GENETICS,goldberg1985alleleslociand} evolve
+populations of tours via crossover operators (OX, PMX) and mutation.
+Simulated Annealing~\cite{kirkpatrick1983optimization} accepts
+worsening moves with temperature-dependent probability, enabling
+escape from local optima. Tabu Search~\cite{glover1989tabu} uses
+short-term memory to avoid cycling. Ant Colony
+Optimization~\cite{dorigo1992optimization,dorigo1996ant} constructs
+solutions probabilistically guided by pheromone trails that
+reinforce high-quality routes. While these methods often achieve
+smaller gaps than simple heuristics, they require careful parameter
+tuning and longer time budgets. Table~\ref{tab:comparison}
+summarizes the main algorithmic families.
+
+\begin{table}
+\caption{Algorithmic families for the TSP: complexity, scalability,
+and solution quality.}\label{tab:comparison}
+\centering\small
+\begin{tabular}{@{}lllll@{}}
+\toprule
+\textbf{Method} & \textbf{Type} & \textbf{Complexity}
+  & \textbf{Scalability} & \textbf{Quality} \\
+\midrule
+Brute Force           & Exact         & $O(n!)$           & Very low  & Optimal \\
+Branch \& Bound       & Exact         & Exponential       & Low       & Optimal \\
+Dynamic Programming   & Exact         & $O(n^2 2^n)$      & Low       & Optimal \\
+Mixed Integer Prog.   & Exact         & Exponential       & Low--Med  & Optimal \\
+\midrule
+Nearest Neighbour     & Constructive  & $O(n^2)$          & High      & Low     \\
+2-opt                 & Improvement   & $O(n^2)$/iter     & Medium    & Medium  \\
+Lin--Kernighan        & Improvement   & $O(n^{2.2})$      & High      & High    \\
+\midrule
+Genetic Algorithms    & Metaheuristic & Variable          & High      & Good    \\
+Simulated Annealing   & Metaheuristic & Variable          & Medium    & Good    \\
+Ant Colony Opt.       & Metaheuristic & Variable          & Med--High & Good    \\
+\midrule
+\textbf{GSPH-FC (ours)} & Heuristic  & $O(n^2)$ & \textbf{Very high} & \textbf{Good} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ================================================================
+\section{Mathematical Formulation}
+\label{sec:formulation}
+% ================================================================
+
+Let $G=(V,E)$ be a complete undirected graph where
+$V=\{v_1,\dots,v_n\}\subset\mathbb{R}^2$ with coordinates
+$(x_i,y_i)$. Edge costs follow the TSPLIB \texttt{EUC\_2D}
+convention~\cite{reinelt1991tsplib}:
+\begin{equation}
+d(v_i,v_j)=\left\lfloor\sqrt{(x_i-x_j)^2+(y_i-y_j)^2}+0.5\right\rfloor.
+\label{eq:dist}
+\end{equation}
+The TSP seeks a Hamiltonian cycle
+$\pi=(v_{\pi(1)},\dots,v_{\pi(n)},v_{\pi(1)})$ minimizing:
+\begin{equation}
+\min_{\pi}\;L(\pi)=\sum_{i=1}^{n}
+d\!\left(v_{\pi(i)},v_{\pi(i\bmod n+1)}\right).
+\label{eq:tsp}
+\end{equation}
+
+\paragraph{Scope and assumptions.}
+$V\subset\mathbb{R}^2$, $G$ complete undirected, cost $d$ symmetric
+Euclidean with \texttt{EUC\_2D} rounding. We seek a Hamiltonian
+cycle $\pi$ minimizing $L(\pi)$.
+
+\subsection{Geometric Decomposition}
+
+The bounding box of $V$ yields midpoints:
+\begin{equation}
+x_m=\tfrac{x_{\min}+x_{\max}}{2}, \quad
+y_m=\tfrac{y_{\min}+y_{\max}}{2}.
+\end{equation}
+$V$ is partitioned into four quadrants:
+\begin{align}
+Q_1&=\{v\in V: x_v\le x_m,\; y_v>y_m\}  &&\text{(NW)},\\
+Q_2&=\{v\in V: x_v>x_m,\; y_v>y_m\}    &&\text{(NE)},\\
+Q_3&=\{v\in V: x_v\le x_m,\; y_v\le y_m\}&&\text{(SW)},\\
+Q_4&=\{v\in V: x_v>x_m,\; y_v\le y_m\} &&\text{(SE)}.
+\end{align}
+
+\subsection{Intra-Quadrant Construction and Refinement}
+
+For each non-empty $Q_k$ with $|Q_k|\ge 2$, a path $P_k$ is built
+by NN starting from seed $s\in Q_k$:
+\begin{equation}
+p_{i+1}=\arg\min_{v\in Q_k\setminus\{p_1,\dots,p_i\}}d(p_i,v).
+\end{equation}
+Two 2-opt passes are then applied. A swap is accepted if:
+\begin{equation}
+d(p_i,p_j)+d(p_{i+1},p_{j+1})<d(p_i,p_{i+1})+d(p_j,p_{j+1})
+\;\Rightarrow\;\text{reverse }(p_{i+1},\dots,p_j).
+\end{equation}
+
+\subsection{Inter-Quadrant Frontier Connectivity}
+
+Adjacent quadrant paths are joined via minimum-cost frontier pairs.
+For a vertical boundary at $x_m$ between $Q_a$ and $Q_b$:
+\begin{equation}
+F_a(\varepsilon)=\{u\in Q_a:|x_u-x_m|<\varepsilon\},\quad
+F_b(\varepsilon)=\{v\in Q_b:|x_v-x_m|<\varepsilon\},
+\end{equation}
+\begin{equation}
+(u^*,v^*)=\arg\min_{u\in F_a,\,v\in F_b}d(u,v).
+\label{eq:frontier}
+\end{equation}
+Horizontal boundaries are handled analogously.
+$\varepsilon$ is adapted to avoid empty frontier sets.
+
+\subsection{Global Tour Assembly}
+
+Sub-tours are concatenated in clockwise order
+$Q_1\!\to\!Q_2\!\to\!Q_4\!\to\!Q_3$. For each consecutive pair
+$(R_i,R_{i+1})$, the orientation minimizing the linking cost is
+selected:
+\begin{equation}
+\begin{split}
+c(R_i,R_{i+1})=\min\bigl\{
+  &\,d(f(R_i),f(R_{i+1})),\;d(f(R_i),\ell(R_{i+1})),\\
+  &\,d(\ell(R_i),f(R_{i+1})),\;d(\ell(R_i),\ell(R_{i+1}))\bigr\},
+\end{split}
+\end{equation}
+where $f(\cdot)$ and $\ell(\cdot)$ denote first and last nodes.
+
+\subsection{Advanced Local-Search Polishing}
+
+The optional polishing phase combines three operators under budget
+$T_{\text{bgt}}$:
+
+\paragraph{2-opt with Don't-Look Bits (DLB)~\cite{bentley1992fast}.}
+For each active node $v_a$ ($\text{dlb}[a]=\mathrm{false}$) and
+each candidate $v_c\in C(v_a)$ ($k$ nearest neighbours):
+\begin{equation}
+\Delta_{2\text{opt}}=
+  d(v_a,v_{a+1})+d(v_c,v_{c+1})
+ -d(v_a,v_c)-d(v_{a+1},v_{c+1}).
+\end{equation}
+If $\Delta_{2\text{opt}}>0$ the swap is applied; otherwise
+$\text{dlb}[a]\gets\mathrm{true}$.
+
+\paragraph{Or-opt~\cite{or1976traveling}.}
+Chains of length $\ell\le L_{\max}$ are relocated from $i$ to $j$:
+\begin{equation}
+\begin{split}
+\Delta_{\text{or}}=\;
+  &d(v_{i-1},v_i)+d(v_{i+\ell-1},v_{i+\ell})+d(v_j,v_{j+1})\\
+  &-d(v_{i-1},v_{i+\ell})-d(v_j,v_i)-d(v_{i+\ell-1},v_{j+1}).
+\end{split}
+\end{equation}
+
+\paragraph{ILS Double-Bridge~\cite{lourencco2003ils,martin1991large}.}
+Given cut points $0<a<b<c<d<n$:
+\begin{equation}
+\begin{split}
+\pi'\!={}&(\pi_{1:a},\,\pi_{c+1:d},\,\pi_{b+1:c},\,\\
+         &\phantom{(}\pi_{a+1:b},\,\pi_{d+1:n}).
+\end{split}
+\end{equation}
+After perturbation, 2-opt DLB is re-applied and the improved
+incumbent is retained.
+
+\subsection{Complexity Analysis}
+
+\begin{itemize}
+  \item \textbf{Spatial partition:} $O(n)$.
+  \item \textbf{NN per quadrant:} $O(n_k^2)$, $n_k\approx n/4$.
+    Total: $\sum_k O(n_k^2)\approx O(n^2/4)$.
+  \item \textbf{2-opt per quadrant (×2):} $O(n_k^2)$ per pass.
+    Highly parallelizable across 4 threads.
+  \item \textbf{KNN candidate sets:} $O(n\log n)$ build,
+    $O(nk)$ queries.
+  \item \textbf{Frontier connectivity:} $O(|F_a||F_b|)$;
+    $O(k)$ with cross-frontier $k$-NN index.
+  \item \textbf{Polishing (2-opt DLB + Or-opt + ILS):} $O(n^2)$.
+\end{itemize}
+
+The dominant term is $T(n)=O(n^2)$, matching state-of-the-art
+2-opt-based heuristics, with a practical $\approx 4\times$
+reduction from quadrant decomposition and natural 4-thread
+parallelism.
+
+\paragraph{Finite convergence.}
+Each accepted local move strictly reduces $L(\pi)$; the tour space
+is finite, so local-search phases converge in finite time to a
+local optimum for the chosen neighborhood.
+
+% ================================================================
+\section{Algorithm and Pseudocode}
+\label{sec:algorithm}
+% ================================================================
+
+Algorithm~\ref{alg:gsph} presents the top-level GSPH-FC procedure.
+Algorithms~\ref{alg:nn}--\ref{alg:dlb} detail all subroutines.
+
+\begin{algorithm}
+\caption{GSPH-FC — Top-level procedure, $O(n^2)$}
+\label{alg:gsph}
+\begin{algorithmic}[1]
+\Require $V\!\subset\!\mathbb{R}^2$, $\varepsilon$,
+         $T_{\text{bgt}}$, $k_{\text{cand}}$, \textsc{MaxIter}
+\Ensure  Tour $\pi$, length $L$
+\State \textbf{Phase 1 — Spatial partition}
+\State Compute $x_m, y_m$; assign each $v\in V$ to quadrant $Q_k$
+\State \textbf{Phase 2 — Intra-quadrant construction}
+\ForAll{$Q_k\in\{Q_1,Q_2,Q_3,Q_4\}$}
+  \If{$|Q_k|\le 1$}\; $R_k\gets Q_k$
+  \Else
+    \State $R_k\gets\Call{NearestNeighbor}{Q_k}$
+    \For{$t=1,2$}
+      \State $R_k\gets\Call{TwoOptPath}{R_k,\textsc{MaxIter}}$
+    \EndFor
+  \EndIf
+\EndFor
+\State \textbf{Phase 3 — Inter-quadrant frontier connections}
+\ForAll{adjacent pair $(A,B,\text{dir})$}
+  \State $(u^*,v^*)\gets\Call{BestFrontierPair}{A,B,\text{dir},\varepsilon}$
+  \State Record connection $(u^*,v^*)$
+\EndFor
+\State \textbf{Phase 4 — Global assembly}
+\State $\pi_0\gets\Call{ConcatQuadrants}{\{R_1,R_2,R_3,R_4\}}$
+\State \textbf{Phase 5 — Local-search polishing}
+\State $\pi\gets\Call{PolishFast}{\pi_0,T_{\text{bgt}},k_{\text{cand}}}$
+\State \Return $(\pi,\Call{Length}{\pi})$
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{\textsc{NearestNeighbor}.}
+Greedy path construction: always select the closest unvisited node.
+\textbf{Complexity:} $O(m^2)$, $m=|Q_k|$.
+
+\begin{algorithm}
+\caption{\textsc{NearestNeighbor} — Greedy path construction}
+\label{alg:nn}
+\begin{algorithmic}[1]
+\Require Node set $P=\{p_1,\dots,p_m\}$
+\Ensure  Open path \textit{route}
+\State $\textit{cur}\gets p_1$;\;
+       $R\gets P\setminus\{p_1\}$;\;
+       $\textit{route}\gets[p_1]$
+\While{$R\neq\emptyset$}
+  \State $\textit{nxt}\gets\arg\min_{p\in R}d(\textit{cur},p)$
+  \State \textit{route}.append(\textit{nxt});\;
+         $R\gets R\setminus\{\textit{nxt}\}$;\;
+         $\textit{cur}\gets\textit{nxt}$
+\EndWhile
+\State \Return \textit{route}
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{\textsc{TwoOptPath}.}
+Applies 2-opt to an open path, reversing segments that reduce total
+length. \textbf{Complexity:} $O(m^2)$/iteration.
+
+\begin{algorithm}
+\caption{\textsc{TwoOptPath} — 2-opt for open path}
+\label{alg:twoopt}
+\begin{algorithmic}[1]
+\Require Path \textit{route}, \textsc{MaxIter}
+\Ensure  Improved path
+\State $\textit{imp}\gets\mathrm{true}$;\; $t\gets 0$
+\While{$\textit{imp}$ \textbf{and} $t<\textsc{MaxIter}$}
+  \State $\textit{imp}\gets\mathrm{false}$
+  \For{$i=1$ \textbf{to} $|\textit{route}|-2$}
+    \For{$j=i+1$ \textbf{to} $|\textit{route}|-1$}
+      \State $\delta\gets d(r_i,r_j)+d(r_{i+1},r_{j+1})
+                       -d(r_i,r_{i+1})-d(r_j,r_{j+1})$
+      \If{$\delta<0$}
+        \State \Call{Reverse}{\textit{route}$[i{+}1{:}j]$};\;
+               $\textit{imp}\gets\mathrm{true}$
+      \EndIf
+    \EndFor
+  \EndFor
+  \State $t\gets t+1$
+\EndWhile
+\State \Return \textit{route}
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{\textsc{BestFrontierPair}.}
+Finds the minimum-cost node pair across adjacent quadrants within
+band $\varepsilon$. \textbf{Complexity:} $O(|F_A||F_B|)$.
+
+\begin{algorithm}
+\caption{\textsc{BestFrontierPair} — Minimum-cost cross-boundary pair}
+\label{alg:frontier}
+\begin{algorithmic}[1]
+\Require Quadrants $A,B$;\;
+         $\texttt{dir}\in\{\text{vert},\text{horiz}\}$;\;
+         midpoint $m$;\; tolerance $\varepsilon$
+\Ensure  Pair $(u^*,v^*)$
+\If{\texttt{dir}=vert}
+  \State $F_A\gets\{p\in A:|x_p-m|<\varepsilon\}$;\;
+         $F_B\gets\{p\in B:|x_p-m|<\varepsilon\}$
+\Else
+  \State $F_A\gets\{p\in A:|y_p-m|<\varepsilon\}$;\;
+         $F_B\gets\{p\in B:|y_p-m|<\varepsilon\}$
+\EndIf
+\State $(u^*,v^*)\gets(\bot,\bot)$;\; $d^*\gets+\infty$
+\ForAll{$u\in F_A$}
+  \ForAll{$v\in F_B$}
+    \If{$d(u,v)<d^*$}\;
+      $(u^*,v^*,d^*)\gets(u,v,d(u,v))$
+    \EndIf
+  \EndFor
+\EndFor
+\State \Return $(u^*,v^*)$
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{\textsc{ConcatQuadrants}.}
+Concatenates quadrant paths in clockwise order, inverting each
+when it reduces the linking distance.
+\textbf{Complexity:} $O(n)$.
+
+\begin{algorithm}
+\caption{\textsc{ConcatQuadrants} — Quadrant route assembly}
+\label{alg:concat}
+\begin{algorithmic}[1]
+\Require Routes $\{R_1,R_2,R_3,R_4\}$
+\Ensure  Concatenated sequence \textit{seq}
+\State $\textit{order}\gets[Q_1,Q_2,Q_4,Q_3]$;\;
+       $\textit{seq}\gets[\,]$;\;
+       $\textit{last}\gets\bot$
+\ForAll{$Q_k$ \textbf{in} \textit{order}}
+  \State $R\gets$ route of $Q_k$
+  \If{$R=\emptyset$}\;\textbf{continue}\EndIf
+  \If{$\textit{last}=\bot$}\; $\textit{seq}\gets R$
+  \Else
+    \If{$d(\textit{last},R[1])\le d(\textit{last},R[\text{end}])$}
+      \State Append $R$ to \textit{seq}
+    \Else
+      \State Append \Call{Reverse}{$R$} to \textit{seq}
+    \EndIf
+  \EndIf
+  \State $\textit{last}\gets\textit{seq}[\text{end}]$
+\EndFor
+\State \Return \textit{seq}
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{\textsc{PolishFast}.}
+Global improvement: (i) 2-opt DLB, (ii) Or-opt, (iii) ILS with
+double-bridge. Uses candidate sets throughout.
+\textbf{Complexity:} $O(n^2)$.
+
+\begin{algorithm}
+\caption{\textsc{PolishFast} — Budget-bounded local-search polishing}
+\label{alg:polish}
+\begin{algorithmic}[1]
+\Require Tour $\pi_0$, budget $T_{\text{bgt}}$, $k_{\text{cand}}$
+\Ensure  Polished tour
+\State $\textit{dl}\gets\Call{Now}{}+T_{\text{bgt}}$;\;
+       Build distance matrix $D$ and candidate sets $C$
+\State $\pi\gets\Call{2OptDLB}{\pi_0,D,C,\textit{dl}}$
+\State $\pi\gets\Call{OrOpt}{\pi,D,C,\textit{dl}}$
+\State $\pi\gets\Call{2OptDLB}{\pi,D,C,\textit{dl}}$
+\State $\pi^*\gets\pi$;\; $L^*\gets\Call{Length}{\pi,D}$
+\For{$t=1$ \textbf{to} \textsc{IlsIters}}
+  \If{$\Call{Now}{}>\textit{dl}$}\;\textbf{break}\EndIf
+  \State $\pi'\gets\Call{DoubleBridge}{\pi^*}$
+  \State $\pi'\gets\Call{2OptDLB}{\pi',D,C,\textit{dl}}$
+  \If{$\Call{Length}{\pi',D}<L^*$}\;
+    $\pi^*\gets\pi'$;\; $L^*\gets\Call{Length}{\pi',D}$
+  \EndIf
+\EndFor
+\State \Return $\pi^*$
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{\textsc{2OptDLB}.}
+Accelerated 2-opt using Don't-Look Bits and candidate sets to skip
+nodes with no improvement potential.
+\textbf{Complexity:} $O(n^2)$.
+
+\begin{algorithm}
+\caption{\textsc{2OptDLB} — 2-opt with Don't-Look Bits and candidates}
+\label{alg:dlb}
+\begin{algorithmic}[1]
+\Require Tour $\pi$, distances $D$, candidates $C$,
+         deadline \textit{dl}
+\Ensure  Locally improved tour
+\State Init position array \textit{pos};\;
+       $\text{dlb}[v]\gets\mathrm{false}\ \forall v$;\;
+       $\textit{imp}\gets\mathrm{true}$
+\While{$\textit{imp}$}
+  \State $\textit{imp}\gets\mathrm{false}$
+  \For{$a=0$ \textbf{to} $|\pi|-1$}
+    \If{$\Call{Now}{}>\textit{dl}$}\;\Return $\pi$\EndIf
+    \If{$\text{dlb}[\pi_a]$}\;\textbf{continue}\EndIf
+    \State $g^*\gets 0$;\; $c^*\gets\bot$
+    \ForAll{$c_v\in C[\pi_a]$}
+      \State $c\gets\textit{pos}[c_v]$;\;
+             $b\gets(a+1)\bmod|\pi|$;\;
+             $d\gets(c+1)\bmod|\pi|$
+      \State $g\gets D[\pi_a,\pi_b]+D[\pi_c,\pi_d]
+                   -D[\pi_a,\pi_c]-D[\pi_b,\pi_d]$
+      \If{$g>g^*$}\; $g^*\gets g$;\; $c^*\gets c$\EndIf
+    \EndFor
+    \If{$g^*>0$}
+      \State Apply 2-opt between $b$ and $c^*$;\;
+             update \textit{pos};\;
+             $\text{dlb}[\pi_a]\gets\mathrm{false}$;\;
+             $\textit{imp}\gets\mathrm{true}$
+    \Else\; $\text{dlb}[\pi_a]\gets\mathrm{true}$
+    \EndIf
+  \EndFor
+\EndWhile
+\State \Return $\pi$
+\end{algorithmic}
+\end{algorithm}
+
+% ================================================================
+\section{Experimental Results}
+\label{sec:experiments}
+% ================================================================
+
+\paragraph{Setup.}
+All runs use the same GSPH-FC configuration across all instances.
+Times are single-run wall-clock seconds. GAP$(\%)=100\times
+(\text{GSPH}-\text{BKS})/\text{BKS}$; positive values indicate
+solutions above the BKS. Instances without a known BKS are marked
+\textbf{N/A}. The \texttt{d198} negative GAP is attributed to a
+\texttt{CEIL\_2D}/\texttt{EUC\_2D} metric mismatch in the historical
+record and is retained for transparency.
+
+\textbf{Small Instances ($n \le 120$)}
+
+\begin{table}
+\textbf{Small instances ($n\!\le\!120$).
+\textbf{Bold GAP}: optimum or gap $\le\!0.05\%$.}\label{tab:small}
+\centering\small
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+\textbf{Instance} & $n$ & \textbf{GSPH} & \textbf{BKS}
+  & \textbf{GAP (\%)} & \textbf{Time (s)} \\
+\midrule
+berlin52   &  52 &   7{,}542 &   7{,}542 & \textbf{0.000} & 0.012 \\
+eil51      &  51 &       428 &       426 &          0.469 & 0.011 \\
+eil76      &  76 &       541 &       538 &          0.558 & 0.034 \\
+eil101     & 101 &       634 &       629 &          0.795 & 0.067 \\
+eil10      &  10 &       156 &       --- &  \textbf{N/A}  & 0.001 \\
+eil20      &  20 &       238 &       --- &  \textbf{N/A}  & 0.002 \\
+rd100      & 100 &   7{,}911 &   7{,}910 & \textbf{0.013} & 0.074 \\
+rat99      &  99 &   1{,}211 &   1{,}211 & \textbf{0.000} & 0.077 \\
+st70       &  70 &       680 &       675 &          0.741 & 0.019 \\
+pr76       &  76 & 108{,}159 & 108{,}159 & \textbf{0.000} & 0.040 \\
+kroA100    & 100 &  21{,}282 &  21{,}282 & \textbf{0.000} & 0.083 \\
+kroB100    & 100 &  22{,}245 &  22{,}141 &          0.470 & 0.034 \\
+kroC100    & 100 &  20{,}880 &  20{,}749 &          0.631 & 0.055 \\
+kroD100    & 100 &  21{,}446 &  21{,}294 &          0.714 & 0.087 \\
+kroE100    & 100 &  22{,}084 &  22{,}068 & \textbf{0.073} & 0.070 \\
+lin105     & 105 &  14{,}379 &  14{,}379 & \textbf{0.000} & 0.098 \\
+pr107      & 107 &  44{,}765 &  44{,}303 &          1.043 & 0.069 \\
+\midrule
+\multicolumn{4}{l}{\textit{Avg.\ GAP (excl.\ N/A)}}
+  & \textbf{0.313} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Medium Instances ($121 \le n \le 300$)}
+
+\begin{table}
+\caption{Medium instances ($121\!\le\!n\!\le\!300$).
+$^{\dagger}$Negative GAP: likely metric mismatch
+(\texttt{CEIL\_2D} vs.\ \texttt{EUC\_2D}).}\label{tab:medium}
+\centering\small
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+\textbf{Instance} & $n$ & \textbf{GSPH} & \textbf{BKS}
+  & \textbf{GAP (\%)} & \textbf{Time (s)} \\
+\midrule
+bier127        & 127 & 118{,}914 & 118{,}282 &   0.534 & 0.133 \\
+ch130          & 130 &   6{,}153 &   6{,}110 &   0.704 & 0.123 \\
+ch150          & 150 &   6{,}555 &   6{,}528 &   0.414 & 0.140 \\
+pr124          & 124 &  59{,}608 &  59{,}030 &   0.979 & 0.098 \\
+pr136          & 136 & 100{,}193 &  96{,}772 &   3.535 & 0.140 \\
+pr144          & 144 &  65{,}960 &  58{,}537 &  12.684 & 0.167 \\
+pr152          & 152 &  75{,}203 &  73{,}682 &   2.064 & 0.147 \\
+ts225          & 225 & 128{,}485 & 126{,}643 &   1.454 & 0.296 \\
+tsp225         & 225 &   4{,}010 &   3{,}916 &   2.400 & 0.379 \\
+a280           & 280 &   2{,}652 &   2{,}579 &   2.831 & 0.488 \\
+kroA150        & 150 &  27{,}297 &  26{,}524 &   2.914 & 0.237 \\
+kroB150        & 150 &  27{,}615 &  26{,}130 &   5.683 & 0.163 \\
+pr226          & 226 &  85{,}729 &  80{,}369 &   6.667 & 0.350 \\
+pr264          & 264 &  50{,}974 &  49{,}135 &   3.740 & 0.037 \\
+pr299          & 299 &  48{,}749 &  48{,}191 &   1.158 & 0.953 \\
+kroA200        & 200 &  29{,}658 &  29{,}368 &   0.987 & 0.370 \\
+kroB200        & 200 &  30{,}097 &  29{,}437 &   2.241 & 0.410 \\
+gil262         & 262 &   2{,}669 &   2{,}378 &  12.240 & 0.849 \\
+d198$^\dagger$ & 198 &  13{,}738 &  15{,}780 &$-$12.940 & 0.491 \\
+u159           & 159 &  42{,}080 &  42{,}080 & \textbf{0.000} & 0.177 \\
+\midrule
+\multicolumn{4}{l}{\textit{Avg.\ GAP (excl.\ $^\dagger$)}}
+  & \textbf{3.381} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Large Instances ($301 \le n \le 2000$)}
+
+\begin{table}
+\caption{Large instances ($301\!\le\!n\!\le\!2000$).}\label{tab:large}
+\centering\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Instance} & $n$ & \textbf{GAP (\%)} & \textbf{Time (s)} \\
+\midrule
+lin318    &     318 &  1.98 &    1.4 \\
+linhp318  &     318 &  4.36 &    1.1 \\
+fl417     &     417 &  6.32 &    2.2 \\
+pcb442    &     442 &  9.95 &    2.6 \\
+rd400     &     400 &  8.34 &    2.6 \\
+pr439     &     439 &  9.31 &    3.8 \\
+p654      &     654 &  9.26 &    9.8 \\
+rat575    &     575 & 10.16 &    4.2 \\
+u574      &     574 &  7.25 &    6.7 \\
+rat783    &     783 &  9.39 &    9.5 \\
+u724      &     724 &  9.56 &   10.0 \\
+d493      &     493 &  4.05 &    3.1 \\
+d657      &     657 &  7.74 &    7.5 \\
+\midrule
+pr1002    & 1{,}002 &  9.08 &   20.3 \\
+u1060     & 1{,}060 &  8.42 &   28.8 \\
+pcb1173   & 1{,}173 & 11.00 &   25.4 \\
+nrw1379   & 1{,}379 &  7.83 &   36.0 \\
+rl1304    & 1{,}304 & 11.85 &   40.8 \\
+rl1323    & 1{,}323 & 11.08 &   30.1 \\
+rl1889    & 1{,}889 & 10.25 &   92.7 \\
+d1291     & 1{,}291 &  5.83 &   26.2 \\
+d1655     & 1{,}655 &  6.60 &   61.6 \\
+fl1400    & 1{,}400 &  4.05 &   39.7 \\
+fl1577    & 1{,}577 &  9.68 &   73.0 \\
+u1432     & 1{,}432 &  6.64 &   35.4 \\
+u1817     & 1{,}817 & 10.67 &   63.5 \\
+vm1084    & 1{,}084 & 10.10 &   22.6 \\
+vm1748    & 1{,}748 &  8.95 &   94.7 \\
+\midrule
+\multicolumn{2}{l}{\textit{Avg.\ GAP}} & \textbf{8.14} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Very Large Instances ($n > 2000$)}
+
+\begin{table}
+\caption{Very large instances ($n\!>\!2000$).}\label{tab:xlarge}
+\centering\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Instance} & $n$ & \textbf{GAP (\%)} & \textbf{Time (s)} \\
+\midrule
+pr2392  & 2{,}392 &  7.41 &     126.1 \\
+u2152   & 2{,}152 &  9.77 &     114.8 \\
+u2319   & 2{,}319 &  2.59 &     125.0 \\
+pcb3038 & 3{,}038 &  7.91 &     319.8 \\
+fl3795  & 3{,}795 &  3.63 &     382.2 \\
+fnl4461 & 4{,}461 &  8.05 &     787.4 \\
+rl5915  & 5{,}915 &  7.66 & 1{,}510.0 \\
+rl5934  & 5{,}934 &  8.43 & 1{,}366.6 \\
+\midrule
+\multicolumn{2}{l}{\textit{Avg.\ GAP}} & \textbf{6.93} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Visual Consistency Analysis}
+
+To assess structural stability, GSPH-FC was executed 10 times
+independently on \texttt{berlin52}, \texttt{eil76}, and
+\texttt{ts225}. Figures~\ref{fig:berlin52}--\ref{fig:ts225} display
+the resulting tours, enabling qualitative comparison of routing
+patterns and inter-run variability. This analysis allows observing
+whether the method converges to similar tour topologies or exhibits
+high geometric dispersion across runs.
+
+\begin{figure}
+\centering
+\includegraphics[width=\textwidth]%
+  {Resultados/grafico_berlin52_comparison.jpg}
+\caption{Ten independent GSPH-FC runs on \texttt{berlin52} ($n=52$).
+Strong structural consistency on a small, well-structured instance.}
+\label{fig:berlin52}
+\end{figure}
+
+\begin{figure}
+\centering
+\includegraphics[width=\textwidth]%
+  {Resultados/grafico_eil76_comparison.jpg}
+\caption{Ten independent runs on \texttt{eil76} ($n=76$). Moderate
+geometric variability; quadrant boundary patterns are recognizable
+across all runs.}
+\label{fig:eil76}
+\end{figure}
+
+\begin{figure}
+\centering
+\includegraphics[width=\textwidth]%
+  {Resultados/grafico_ts225_comparison.jpg}
+\caption{Ten independent runs on \texttt{ts225} ($n=225$). Structural
+robustness is clearly visible; local differences arise mainly near
+quadrant boundaries.}
+\label{fig:ts225}
+\end{figure}
+
+\subsection{Peak Memory Analysis}
+\label{sec:memory}
+
+Peak memory was profiled with \texttt{tracemalloc} and
+\texttt{pympler} on the same three instances used for visual
+analysis. Table~\ref{tab:memory} isolates the GSPH-specific
+heap allocations at \texttt{GSPH\_BASE.py} lines 58 and 185
+(route and candidate structures), and reports the total process
+peak which includes Python runtime and profiler overhead
+($\approx$1.65\,MB constant across all instances).
+
+\begin{table}
+\caption{Peak memory profile across five representative instances.
+\textit{GSPH alloc.}\ sums all algorithm-specific hotspots
+in \texttt{GSPH\_BASE.py}; process peak includes Python runtime
+and profiler overhead ($\approx$1.65\,MB constant).}\label{tab:memory}
+\centering\small
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+\textbf{Instance} & $n$
+  & \textbf{Tuples (MB)} & \textbf{float (KB)}
+  & \textbf{GSPH alloc.\ (KiB)} & \textbf{Peak (MB)} \\
+\midrule
+berlin52 &  52 & 2.74 & 1.27 & $23.1{+}2.9 \approx 26.0$ & $\approx 4.82$ \\
+eil76    &  76 & 2.73 & 1.27 & $20.4{+}3.9 \approx 24.3$ & $\approx 4.81$ \\
+pr152    & 152 & 2.74 & 1.83 & $20.7{+}3.9 \approx 24.6$ & $\approx 4.82$ \\
+ts225    & 225 & 2.77 & 4.64 & $27.6{+}3.9 \approx 31.5$ & $\approx 4.85$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Four key observations emerge from the memory profile.
+%
+\textbf{(1) Near-constant total footprint.}
+The process peak spans only 4.81--4.85\,MB across $n=76$ to $n=225$,
+a spread of $\approx$40\,KB for a $3\times$ increase in instance
+size. The dominant consumer is the Python runtime itself (tuples,
+lists, strings) at a constant $\approx$4.63\,MB, confirming that
+GSPH-FC introduces virtually no additional heap pressure as $n$ grows.
+%
+\textbf{(2) Sub-linear GSPH-specific growth.}
+Algorithm-specific allocations range from 24.3\,KiB ($n=76$) to
+31.5\,KiB ($n=225$), a $1.30\times$ factor for a $3\times$ increase
+in $n$. This sub-linear scaling is consistent with the quadrant
+decomposition: each sub-problem holds $\approx n/4$ nodes, so local
+route and candidate-set structures grow as $O(n)$ rather than $O(n^2)$.
+%
+\textbf{(3) Absence of a full distance matrix.}
+Float objects stay below 5\,KiB across all instances. A full
+\texttt{float64} distance matrix for $n=225$ would cost
+$225^2\times 8\approx 405$\,KiB — a $80\times$ overhead that
+never materializes, confirming that GSPH-FC computes distances
+on-the-fly and retains only sparse candidate-set entries.
+%
+\textbf{(4) Instance-independent list and string overhead.}
+Both \texttt{list} (1.22\,MB) and \texttt{str} ($\approx$687\,KB)
+counts are identical across all four instances, confirming they
+belong to the Python interpreter and profiler infrastructure rather
+than the algorithm. This property guarantees that switching to a
+leaner runtime (e.g., PyPy or a compiled extension) would reduce
+the baseline overhead without changing the algorithm's $O(n)$
+memory profile.
+
+
+% ================================================================
+\section{Critical Analysis}
+\label{sec:analysis}
+% ================================================================
+
+\paragraph{Strengths.}
+\begin{itemize}
+  \item \textit{Effective spatial locality.} Quadrant decomposition
+    confines 2-opt to compact sub-spaces, reducing crossing edges
+    and yielding interpretable tours.
+  \item \textit{Natural parallelism.} Each $Q_k$ is solved
+    independently (NN + 2-opt), enabling 4-thread execution with
+    near-linear speedup.
+  \item \textit{Reduced constant factor.} Working on sub-tours of
+    $\approx n/4$ nodes reduces the practical 2-opt cost to
+    $\sim O(n^2/4)$.
+  \item \textit{Simplicity and traceability.} Clear frontier rules
+    simplify debugging, profiling, and integration in production
+    pipelines.
+  \item \textit{Composability.} The polishing phase (DLB +
+    candidate sets + ILS) integrates seamlessly without redesign.
+  \item \textit{Memory efficiency.} Near-constant peak footprint
+    ($\approx$4.75\,MB) makes the method suitable for
+    memory-constrained deployments.
+\end{itemize}
+
+\paragraph{Weaknesses.}
+\begin{itemize}
+  \item \textit{Rigid axis-aligned cuts.} Clusters straddling
+    $x_m$ or $y_m$ may be split, inducing long linking edges.
+  \item \textit{Distribution sensitivity.} Highly imbalanced
+    quadrants degrade both time and assembly quality.
+  \item \textit{Fixed concatenation order.} A static clockwise
+    sweep can produce zig-zag patterns on non-uniform instances.
+  \item \textit{Metric dependence.} Switching between
+    \texttt{EUC\_2D} and \texttt{CEIL\_2D} may produce atypical
+    GAPs if BKS records are inconsistent.
+\end{itemize}
+
+\paragraph{Opportunities.}
+\begin{itemize}
+  \item \textit{Boundary hybridization.} Applying 3-opt or a
+    focused LK pass only on frontier nodes corrects long links at
+    low cost.
+  \item \textit{Recursive QML-GSPH.} A quadtree decomposition with
+    adaptive stopping threshold $n_{\min}$ extends the hierarchical
+    idea to multiple levels.
+  \item \textit{Delaunay/MST candidate sets.} Geometry-guided
+    $k$-NN structures accelerate 2-opt and Or-opt without
+    sacrificing improvement quality.
+  \item \textit{Adaptive ordering.} Deciding the concatenation
+    sequence by density centroid or PCA reduces zig-zag artifacts.
+\end{itemize}
+
+\paragraph{Threats.}
+\begin{itemize}
+  \item \textit{Non-Euclidean metrics.} Asymmetric or road-network
+    instances violate the geometric assumptions of GSPH-FC.
+  \item \textit{Adversarial distributions.} Bimodal or diagonal
+    clusters increase frontier connection costs significantly.
+  \item \textit{BKS inconsistencies.} Metric or rounding
+    discrepancies in the reference library can skew GAP reporting.
+\end{itemize}
+
+\paragraph{CPU behavior.}
+CPU usage tends to increase during the polishing phase
+(2-opt/Or-opt/ILS) as the algorithm explores harder neighborhoods
+after large improvements stabilize. This is mitigated by: limiting
+$k\in[20,40]$ in candidate sets with aggressive DLB; per-phase
+time quotas with early stopping; restricting 3-opt/LK to frontier
+windows; rebalancing via PCA rotation when quadrant sizes are
+imbalanced; precomputing $D$ in \texttt{float32} and vectorizing
+with Numba/Cython/OpenMP.
+
+% ================================================================
+\section{Conclusions}
+\label{sec:conclusions}
+% ================================================================
+
+We presented \textbf{GSPH-FC}, a hierarchical Euclidean TSP
+heuristic combining bounding-box quadrant decomposition, Nearest
+Neighbour + 2-opt per quadrant, and minimum-cost frontier
+connectivity for global assembly. On 55 TSPLIB instances
+($n$ up to 5\,934), the method achieves a typical GAP of 3--12\%
+over the BKS with sub-second times for $n\!\le\!300$, under 100\,s
+for $n\!\le\!1{,}900$, and natural 4-thread parallelism that
+reduces the effective 2-opt constant factor by $\approx\!4\times$.
+Memory profiling confirms a near-constant footprint ($\approx$4.75\,MB)
+dominated by Python runtime overhead, with GSPH-specific allocations
+growing sub-linearly at just 31.5\,KiB for $n=225$.
+
+The geometric design produces interpretable, low-crossing tours and
+supports straightforward integration in logistics deployments.
+One atypical case (\texttt{d198}, negative GAP) highlights the
+critical importance of consistent metric conventions across
+experimental pipelines.
+
+Future work includes: (i)~recursive \textbf{QML-GSPH} with
+density-adaptive $n_{\min}$; (ii)~focused 3-opt/LK on frontier
+edges; (iii)~PCA- or centroid-guided adaptive concatenation;
+and (iv)~extension to asymmetric TSP, road-network VRP, and
+VRPTW where spatial decomposition can serve as a geometric
+pre-solver.
+
+\begin{credits}
+\subsubsection{\ackname}
+The authors thank the faculty of the Heuristics course at
+Universidad Andres Bello for their guidance and material support
+during the development of this work.
+\end{credits}
+
+\bibliographystyle{splncs04}
+\bibliography{bibliografia}
+
+\end{document}

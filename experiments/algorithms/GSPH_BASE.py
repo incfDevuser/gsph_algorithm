@@ -871,7 +871,7 @@ if __name__ == "__main__":
             
         routes = best_result['routes']
         conns = best_result['conns'] 
-        total_length = best_result['total_length']
+        totcompal_length = best_result['total_length']
         xm = best_result['xm']
         ym = best_result['ym']
         elapsed = best_result['elapsed']
