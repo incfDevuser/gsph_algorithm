@@ -69,12 +69,14 @@ RUNS = 20
 
 def run_instance(name):
     cmd = [sys.executable, GSPH_BASE, "--profile", name]
+    env = os.environ.copy()
+    env["GSPH_PROFILE_RUNS"] = str(RUNS)
     print(f"\n{'='*60}")
     print(f"  Ejecutando: {name} ({RUNS} runs)")
     print(f"{'='*60}")
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=7200, cwd=ALGO_DIR,
+            cmd, capture_output=True, text=True, timeout=7200, cwd=ALGO_DIR, env=env,
         )
         output = result.stdout + result.stderr
         lines_out = output.strip().split('\n')

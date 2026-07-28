@@ -2,12 +2,20 @@ import os
 import time
 import random
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 import sys
 from math import hypot
-from scipy.spatial import cKDTree 
+from itertools import product
+try:
+    from scipy.spatial import cKDTree
+except Exception:
+    cKDTree = None
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+except Exception:
+    matplotlib = None
+    plt = None
 try:
     import psutil
 except Exception:
@@ -39,6 +47,31 @@ OR_OPT_MAX_L      = 3     # Cadenas más largas Or-opt (1 -> 3)
 OR_OPT_MOVE_LIMIT = 8000  # Más movimientos Or-opt (3000 -> 8000)
 ILS_ITERS         = 5     # Más iteraciones ILS (1 -> 5)
 SKIP_PROB_2OPT    = 0.15  # Menos probabilidad de saltar (0.35 -> 0.15) 
+
+FRONTIER_TOPK               = 3
+MAX_ASSEMBLY_PER_PARTITION  = 8
+ASSEMBLY_FINALISTS          = 3
+PARTITION_PORTFOLIO_LIMIT   = 6
+PARTITION_SHIFT_FRAC        = 0.12
+LIGHT_POLISH_FRACTION       = 0.20
+LIGHT_MAX_SWEEPS_2OPT       = 1
+LIGHT_OR_OPT_L              = 1
+
+def _env_int(name, default):
+    try:
+        return max(1, int(os.getenv(name, str(default))))
+    except Exception:
+        return default
+
+PROFILE_RUNS = _env_int('GSPH_PROFILE_RUNS', 10)
+
+Q_ORDER = ['Q1', 'Q2', 'Q4', 'Q3']
+ADJACENCY_CYCLE = [
+    ('Q1', 'Q2', 'vertical'),
+    ('Q2', 'Q4', 'horizontal'),
+    ('Q4', 'Q3', 'vertical'),
+    ('Q3', 'Q1', 'horizontal'),
+]
 
 _event_enabled = False
 _events = []
@@ -95,9 +128,14 @@ def total_tour_length(tour):
     if len(tour) < 2: return 0
     return total_path_length(tour) + euclidean_distance(tour[-1], tour[0])
 
-def subdivide_quadrants(pts):
+def subdivide_quadrants(pts, xmid=None, ymid=None):
+    if not pts:
+        return {'Q1': [], 'Q2': [], 'Q3': [], 'Q4': []}, 0.0, 0.0
     xs, ys = zip(*pts)
-    xmid, ymid = (min(xs)+max(xs))/2, (min(ys)+max(ys))/2
+    if xmid is None:
+        xmid = (min(xs)+max(xs))/2
+    if ymid is None:
+        ymid = (min(ys)+max(ys))/2
     quads = {'Q1':[], 'Q2':[], 'Q3':[], 'Q4':[]}
     for p in pts:
         x, y = p
@@ -107,17 +145,127 @@ def subdivide_quadrants(pts):
         else: quads['Q4'].append(p)
     return quads, xmid, ymid
 
-def best_frontier_pair(A, B, direction, mid, eps):
-    filt = (lambda p: abs(p[0]-mid)<eps) if direction=='vertical' else (lambda p: abs(p[1]-mid)<eps)
-    candA = [p for p in A if filt(p)]
-    candB = [p for p in B if filt(p)]
-    best, best_d = (None,None), float('inf')
+def generate_partition_portfolio(pts, shift_frac=PARTITION_SHIFT_FRAC, limit=PARTITION_PORTFOLIO_LIMIT):
+    if not pts:
+        return [('bbox', 0.0, 0.0)]
+
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    xmin, xmax = min(xs), max(xs)
+    ymin, ymax = min(ys), max(ys)
+    bbox_xmid = (xmin + xmax) / 2
+    bbox_ymid = (ymin + ymax) / 2
+    median_xmid = float(np.median(xs))
+    median_ymid = float(np.median(ys))
+    shift_x = (xmax - xmin) * shift_frac
+    shift_y = (ymax - ymin) * shift_frac
+
+    specs = [
+        ('bbox', bbox_xmid, bbox_ymid),
+        ('median', median_xmid, median_ymid),
+        ('shift_ne', bbox_xmid + shift_x, bbox_ymid + shift_y),
+        ('shift_nw', bbox_xmid - shift_x, bbox_ymid + shift_y),
+        ('shift_se', bbox_xmid + shift_x, bbox_ymid - shift_y),
+        ('shift_sw', bbox_xmid - shift_x, bbox_ymid - shift_y),
+    ]
+
+    unique = []
+    seen = set()
+    for label, xmid, ymid in specs:
+        key = (round(xmid, 6), round(ymid, 6))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((label, xmid, ymid))
+        if len(unique) >= limit:
+            break
+    return unique
+
+def best_frontier_pairs(A, B, direction, mid, eps, k=FRONTIER_TOPK):
+    if not A or not B:
+        return [((None, None), float('inf'))]
+
+    def _candidates(scale):
+        band = eps * scale
+        filt = (lambda p: abs(p[0]-mid) < band) if direction == 'vertical' else (lambda p: abs(p[1]-mid) < band)
+        return [p for p in A if filt(p)], [p for p in B if filt(p)]
+
+    candA, candB = _candidates(1)
+    scale = 1
+    while (not candA or not candB) and scale < 16:
+        scale *= 2
+        candA, candB = _candidates(scale)
+
+    if not candA:
+        candA = list(A)
+    if not candB:
+        candB = list(B)
+
+    pairs = []
     for a in candA:
         for b in candB:
             d = euclidean_distance(a,b)
-            if d < best_d:
-                best, best_d = (a,b), d
-    return best, best_d
+            pairs.append(((a, b), d))
+
+    pairs.sort(key=lambda item: item[1])
+    top = []
+    seen = set()
+    for item in pairs:
+        key = item[0]
+        if key in seen:
+            continue
+        seen.add(key)
+        top.append(item)
+        if len(top) >= max(1, k):
+            break
+    return top or [((None, None), float('inf'))]
+
+def best_frontier_pair(A, B, direction, mid, eps):
+    return best_frontier_pairs(A, B, direction, mid, eps, k=1)[0]
+
+def build_anchored_path(points, start, end, max_iter=50):
+    """
+    Construye una ruta abierta con extremos fijados por las fronteras.
+    El interior se completa con inserción de costo mínimo y luego se
+    refina con 2-opt sin mover los extremos.
+    """
+    if not points:
+        return []
+    if len(points) == 1:
+        return points[:]
+    if start is None or end is None or start not in points or end not in points or start == end:
+        start = points[0]
+        remaining = set(points)
+        remaining.remove(start)
+        route = [start]
+        curr = start
+        while remaining:
+            nxt = min(remaining, key=lambda p: eucl_float(curr, p))
+            route.append(nxt)
+            remaining.remove(nxt)
+            curr = nxt
+        return tsp_2opt(route, max_iter=max_iter)
+
+    route = [start, end]
+    remaining = [p for p in points if p != start and p != end]
+
+    while remaining:
+        best_node = None
+        best_pos = 1
+        best_inc = float("inf")
+        for node in remaining:
+            for i in range(len(route) - 1):
+                inc = (euclidean_distance(route[i], node) +
+                       euclidean_distance(node, route[i + 1]) -
+                       euclidean_distance(route[i], route[i + 1]))
+                if inc < best_inc:
+                    best_inc = inc
+                    best_node = node
+                    best_pos = i + 1
+        route.insert(best_pos, best_node)
+        remaining.remove(best_node)
+
+    return tsp_2opt(route, max_iter=max_iter)
 
 def tsp_2opt(points, max_iter=50):
     """
@@ -159,12 +307,18 @@ def build_candidate_sets(points, m=CAND_M, knn_k=CAND_KNN, use_delaunay=USE_DELA
     P = np.asarray(points, dtype=float)
     cand_sets = [set() for _ in range(n)]
     k = min(knn_k + 1, n)
-    tree = cKDTree(P)
-    _, idxs = tree.query(P, k=k)
-    for i in range(n):
-        neigh = idxs[i].tolist() if np.ndim(idxs[i]) else [int(idxs[i])]
-        for j in neigh:
-            if j != i:
+    if cKDTree is not None:
+        tree = cKDTree(P)
+        _, idxs = tree.query(P, k=k)
+        for i in range(n):
+            neigh = idxs[i].tolist() if np.ndim(idxs[i]) else [int(idxs[i])]
+            for j in neigh:
+                if j != i:
+                    cand_sets[i].add(int(j))
+    else:
+        for i in range(n):
+            order = sorted(range(n), key=lambda j: ((P[i, 0] - P[j, 0]) ** 2 + (P[i, 1] - P[j, 1]) ** 2))
+            for j in order[1:k]:
                 cand_sets[i].add(int(j))
     if use_delaunay:
         try:
@@ -175,6 +329,9 @@ def build_candidate_sets(points, m=CAND_M, knn_k=CAND_KNN, use_delaunay=USE_DELA
                 cand_sets[a].update([b, c]); cand_sets[b].update([a, c]); cand_sets[c].update([a, b])
         except Exception:
             pass
+    for i in range(n):
+        for j in list(cand_sets[i]):
+            cand_sets[j].add(i)
     def _dsq(i, j):
         dx = P[i,0]-P[j,0]; dy = P[i,1]-P[j,1]
         return dx*dx + dy*dy
@@ -269,7 +426,16 @@ def two_opt_dlb(perm, D, cand, max_sweeps=1, skip_prob=SKIP_PROB_2OPT, deadline=
                     perm[i:k+1] = reversed(perm[i:k+1])
                     for idx in range(i, k+1):
                         pos[perm[idx]] = idx
-                    dontlook[a1] = False
+                    touched = {
+                        a1,
+                        b1,
+                        perm[i],
+                        perm[k],
+                        perm[(i-1) % n],
+                        perm[(k+1) % n],
+                    }
+                    for node in touched:
+                        dontlook[node] = False
                     improved = True
                 else:
                     dontlook[a1] = True
@@ -299,7 +465,7 @@ def or_opt_move(perm, D, cand, Lmax=OR_OPT_MAX_L, move_limit=OR_OPT_MOVE_LIMIT, 
                 return perm
             for L in range(1, Lmax+1):
                 end = (i + L - 1) % n
-                anchors = cand[perm[i]]
+                anchors = list(set(cand[perm[i]]) | set(cand[perm[end]]))
                 best_gain = 0
                 best_j = None
                 for jnode in anchors:
@@ -357,49 +523,87 @@ def double_bridge_on_perm(perm):
     A = perm[:a]; B = perm[a:b]; C = perm[b:c]; Dd = perm[c:d]; E = perm[d:]
     return A + Dd + C + B + E
 
-def polish_fast(nodes, route):
+def _polish_with_config(nodes, route, D, cand, budget_s, initial_sweeps, or_lmax, final_sweeps, ils_iters, skip_prob):
+    if len(route) < 10:
+        return route[:]
+
+    deadline = time.monotonic() + max(0.03, budget_s)
+    raw_perm = route_to_perm(route, nodes)
+    perm = ensure_valid_perm(raw_perm, len(nodes), D)
+
+    perm = two_opt_dlb(perm, D, cand, max_sweeps=initial_sweeps, skip_prob=skip_prob, deadline=deadline)
+    if or_lmax > 0 and time.monotonic() < deadline:
+        perm = or_opt_move(perm, D, cand, Lmax=or_lmax, deadline=deadline)
+    if final_sweeps > 0 and time.monotonic() < deadline:
+        perm = two_opt_dlb(perm, D, cand, max_sweeps=final_sweeps, skip_prob=max(0.0, skip_prob * 0.5), deadline=deadline)
+
+    best = perm[:]
+    best_len = tour_len_from_perm(best, D)
+    for ils_iter in range(max(0, ils_iters)):
+        if time.monotonic() > deadline:
+            break
+        record_event('ils_double_bridge')
+        kick = double_bridge_on_perm(best)
+        kick = ensure_valid_perm(kick, len(nodes), D)
+        kick = two_opt_dlb(kick, D, cand, max_sweeps=2, skip_prob=max(0.0, skip_prob * 0.5), deadline=deadline)
+        if time.monotonic() < deadline and or_lmax > 0:
+            kick = or_opt_move(kick, D, cand, Lmax=min(2, or_lmax), deadline=deadline)
+        if time.monotonic() < deadline:
+            kick = two_opt_dlb(kick, D, cand, max_sweeps=1, skip_prob=0.0, deadline=deadline)
+
+        L = tour_len_from_perm(kick, D)
+        if L < best_len:
+            best, best_len = kick[:], L
+            record_event(f'ils_improvement_{ils_iter}')
+    return perm_to_route(best, nodes)
+
+def polish_light(nodes, route, D=None, cand=None):
+    if len(route) < 10:
+        return route[:]
+    if D is None:
+        D = build_distance_matrix(nodes)
+    if cand is None:
+        cand = build_candidate_sets(nodes, m=CAND_M, knn_k=CAND_KNN, use_delaunay=USE_DELAUNAY)
+    return _polish_with_config(
+        nodes,
+        route,
+        D,
+        cand,
+        budget_s=TIME_BUDGET_S * LIGHT_POLISH_FRACTION,
+        initial_sweeps=LIGHT_MAX_SWEEPS_2OPT,
+        or_lmax=LIGHT_OR_OPT_L,
+        final_sweeps=1,
+        ils_iters=0,
+        skip_prob=SKIP_PROB_2OPT,
+    )
+
+def polish_fast(nodes, route, D=None, cand=None):
     """Pulido con presupuesto de tiempo: 2-opt(DLB) → Or-opt → 2-opt(DLB) → ILS."""
     record_event('polish_fast_entry')
     if len(route) < 10:
         record_event('polish_fast_short_exit')
         return route[:]
-    D = build_distance_matrix(nodes)
-    cand = build_candidate_sets(nodes, m=CAND_M, knn_k=CAND_KNN, use_delaunay=USE_DELAUNAY)
+    if D is None:
+        D = build_distance_matrix(nodes)
+    if cand is None:
+        cand = build_candidate_sets(nodes, m=CAND_M, knn_k=CAND_KNN, use_delaunay=USE_DELAUNAY)
 
-    deadline = time.monotonic() + max(0.05, TIME_BUDGET_S)
-    raw_perm = route_to_perm(route, nodes)
-    perm = ensure_valid_perm(raw_perm, len(nodes), D)
-    # Fase 1: 2-opt intensivo inicial
-    perm = two_opt_dlb(perm, D, cand, max_sweeps=MAX_SWEEPS_2OPT, deadline=deadline)
-    
-    # Fase 2: Or-opt con cadenas más largas
-    perm = or_opt_move(perm, D, cand, Lmax=OR_OPT_MAX_L, deadline=deadline)
-    
-    # Fase 3: 2-opt de pulido
-    perm = two_opt_dlb(perm, D, cand, max_sweeps=2, deadline=deadline)
-
-    # Fase 4: ILS intensivo con múltiples perturbaciones
-    best = perm[:]; best_len = tour_len_from_perm(best, D)
-    for ils_iter in range(max(0, ILS_ITERS)):
-        if time.monotonic() > deadline: break
-        record_event('ils_double_bridge')
-        kick = double_bridge_on_perm(best)
-        kick = ensure_valid_perm(kick, len(nodes), D)
-        
-        kick = two_opt_dlb(kick, D, cand, max_sweeps=2, deadline=deadline)
-        if time.monotonic() < deadline:
-            kick = or_opt_move(kick, D, cand, Lmax=min(2, OR_OPT_MAX_L), deadline=deadline)
-        if time.monotonic() < deadline:
-            kick = two_opt_dlb(kick, D, cand, max_sweeps=1, deadline=deadline)
-        
-        L = tour_len_from_perm(kick, D)
-        if L < best_len:
-            best, best_len = kick[:], L
-            record_event(f'ils_improvement_{ils_iter}')
+    best_route = _polish_with_config(
+        nodes,
+        route,
+        D,
+        cand,
+        budget_s=TIME_BUDGET_S,
+        initial_sweeps=MAX_SWEEPS_2OPT,
+        or_lmax=OR_OPT_MAX_L,
+        final_sweeps=2,
+        ils_iters=ILS_ITERS,
+        skip_prob=max(0.0, SKIP_PROB_2OPT * 0.33),
+    )
     record_event('polish_fast_exit')
-    return perm_to_route(best, nodes)
+    return best_route
 def _concat_routes_q_order(routes):
-    order = ['Q1','Q2','Q4','Q3']
+    order = Q_ORDER
     seq = []
     last = None
     for key in order:
@@ -414,66 +618,153 @@ def _concat_routes_q_order(routes):
             seq += (r if d1 <= d2 else list(reversed(r)))
         last = seq[-1] if seq else None
     return seq
+
+def _frontier_mid(direction, xmid, ymid):
+    return xmid if direction == 'vertical' else ymid
+
+def _enumerate_frontier_choice_maps(frontier_options, max_count=MAX_ASSEMBLY_PER_PARTITION):
+    option_lists = []
+    edge_keys = []
+    for q1, q2, direction in ADJACENCY_CYCLE:
+        edge_key = (q1, q2)
+        edge_keys.append(edge_key)
+        option_lists.append(frontier_options.get(edge_key) or [((None, None), float('inf'))])
+
+    scored = []
+    for combo in product(*option_lists):
+        score = sum(item[1] for item in combo if np.isfinite(item[1]))
+        choice_map = {edge_key: item for edge_key, item in zip(edge_keys, combo)}
+        scored.append((score, choice_map))
+    scored.sort(key=lambda item: item[0])
+    return [choice_map for _, choice_map in scored[:max(1, max_count)]]
+
+def _build_assembly_candidate(quads, frontier_choice_map, max_iter_local):
+    routes = {}
+    connections = []
+    anchor_map = {
+        'Q1': (('Q3', 'Q1'), ('Q1', 'Q2')),
+        'Q2': (('Q1', 'Q2'), ('Q2', 'Q4')),
+        'Q4': (('Q2', 'Q4'), ('Q4', 'Q3')),
+        'Q3': (('Q4', 'Q3'), ('Q3', 'Q1')),
+    }
+
+    def _frontier_node(edge_key, idx):
+        pair = frontier_choice_map.get(edge_key)
+        if not pair:
+            return None
+        (u, v), _ = pair
+        return u if idx == 0 else v
+
+    for edge_key, pair in frontier_choice_map.items():
+        (a, b), _ = pair
+        if a is not None and b is not None:
+            connections.append((a, b))
+
+    for q in Q_ORDER:
+        pts = quads[q]
+        if len(pts) > 1:
+            prev_key, next_key = anchor_map[q]
+            start_anchor = _frontier_node(prev_key, 1)
+            end_anchor = _frontier_node(next_key, 0)
+            routes[q] = build_anchored_path(
+                pts,
+                start_anchor,
+                end_anchor,
+                max_iter=max(10, min(100, max_iter_local)),
+            )
+        else:
+            routes[q] = pts[:]
+
+    initial_tour = []
+    for q in Q_ORDER:
+        initial_tour.extend(routes.get(q, []))
+    return routes, connections, initial_tour
+
 def gsph_fc(nodes, MAX_ITER_LOCAL=800 ,EPS_FRONTIER=5):
     record_event('gsph_fc_entry')
-    quads, xmid, ymid = subdivide_quadrants(nodes)
-    routes = {}
-    for q, pts in quads.items():
-        if len(pts) > 1:
-            record_event(f'quadrant_start_{q}')
-            
-            best_route = None
-            best_length = float('inf')
-            
-            start_candidates = pts[:min(3, len(pts))]
-            
-            for start_point in start_candidates:
-                start = start_point
-                remaining = set(pts); remaining.remove(start)
-                curr = start; seed = [curr]
-                while remaining:
-                    nxt = min(remaining, key=lambda p: eucl_float(curr, p))
-                    seed.append(nxt); remaining.remove(nxt); curr = nxt
-                
-                rt = seed
-                for _ in range(3):  # Más iteraciones de 2-opt inicial
-                    rt = tsp_2opt(rt, max_iter=100)  # Más iteraciones por pasada
-                
-                # Evaluar esta ruta
-                route_length = total_path_length(rt)
-                if route_length < best_length:
-                    best_length = route_length
-                    best_route = rt[:]
-            
-            routes[q] = best_route if best_route else pts
-            record_event(f'quadrant_end_{q}')
-        else:
-            routes[q] = pts
+    if not nodes:
+        record_event('gsph_fc_exit')
+        return {'QALL': []}, [], 0, 0.0, 0.0
 
-    neighbor_pairs = [
-        ('Q1','Q2','vertical',  xmid),
-        ('Q1','Q3','horizontal',ymid),
-        ('Q2','Q4','horizontal',ymid),
-        ('Q3','Q4','vertical',  xmid)
-    ]
-    connections = []
-    inter_len   = 0
-    for q1,q2,dirc,mid in neighbor_pairs:
-        (a,b), d = best_frontier_pair(quads[q1], quads[q2], dirc, mid, EPS_FRONTIER)
-        if a and b:
-            connections.append((a,b))
-            inter_len += d
-    initial_tour = _concat_routes_q_order(routes)
+    D = build_distance_matrix(nodes)
+    cand = build_candidate_sets(nodes, m=CAND_M, knn_k=CAND_KNN, use_delaunay=USE_DELAUNAY)
+    candidate_pool = []
+
+    record_event('candidate_generation_start')
+    for part_idx, (part_label, xmid, ymid) in enumerate(generate_partition_portfolio(nodes), start=1):
+        quads, xmid, ymid = subdivide_quadrants(nodes, xmid=xmid, ymid=ymid)
+        frontier_options = {}
+        for q1, q2, direction in ADJACENCY_CYCLE:
+            frontier_options[(q1, q2)] = best_frontier_pairs(
+                quads[q1],
+                quads[q2],
+                direction,
+                _frontier_mid(direction, xmid, ymid),
+                EPS_FRONTIER,
+                k=FRONTIER_TOPK,
+            )
+
+        for choice_map in _enumerate_frontier_choice_maps(frontier_options, max_count=MAX_ASSEMBLY_PER_PARTITION):
+            routes, connections, initial_tour = _build_assembly_candidate(quads, choice_map, MAX_ITER_LOCAL)
+            if not initial_tour:
+                continue
+            light_tour = polish_light(nodes, initial_tour, D=D, cand=cand)
+            candidate_pool.append({
+                'partition_label': part_label,
+                'partition_idx': part_idx,
+                'xmid': xmid,
+                'ymid': ymid,
+                'connections': connections,
+                'seed_routes': routes,
+                'tour': light_tour,
+                'light_len': total_tour_length(light_tour),
+                'raw_len': total_tour_length(initial_tour),
+            })
+    record_event('candidate_generation_end')
+
+    if not candidate_pool:
+        quads, xmid, ymid = subdivide_quadrants(nodes)
+        routes = {q: quads[q][:] for q in Q_ORDER}
+        initial_tour = _concat_routes_q_order(routes)
+        candidate_pool.append({
+            'partition_label': 'fallback',
+            'partition_idx': 0,
+            'xmid': xmid,
+            'ymid': ymid,
+            'connections': [],
+            'seed_routes': routes,
+            'tour': initial_tour,
+            'light_len': total_tour_length(initial_tour),
+            'raw_len': total_tour_length(initial_tour),
+        })
+
+    candidate_pool.sort(key=lambda item: (item['light_len'], item['raw_len']))
+    finalists = candidate_pool[:max(1, min(ASSEMBLY_FINALISTS, len(candidate_pool)))]
+
+    best = None
     record_event('polish_start')
-    improved_tour = polish_fast(nodes, initial_tour)
+    for finalist in finalists:
+        improved_tour = polish_fast(nodes, finalist['tour'], D=D, cand=cand)
+        total_len = total_tour_length(improved_tour)
+        if best is None or total_len < best['total_len']:
+            best = {
+                'tour': improved_tour,
+                'total_len': total_len,
+                'connections': finalist['connections'],
+                'xmid': finalist['xmid'],
+                'ymid': finalist['ymid'],
+            }
     record_event('polish_end')
-    total_len = total_tour_length(improved_tour)
 
+    improved_tour = best['tour'] if best else nodes[:]
+    total_len = best['total_len'] if best else total_tour_length(improved_tour)
     routes_out = {'QALL': improved_tour}
     record_event('gsph_fc_exit')
-    return routes_out, connections, total_len, xmid, ymid
+    return routes_out, (best['connections'] if best else []), total_len, (best['xmid'] if best else 0.0), (best['ymid'] if best else 0.0)
 
 def plot_gsph_fc(routes, conns, xmid, ymid, save_path=None):
+    if plt is None:
+        return
     plt.figure(figsize=(10,10))
     
     all_points = []
@@ -543,6 +834,8 @@ def plot_gsph_fc(routes, conns, xmid, ymid, save_path=None):
 
 def _plot_with_title(routes, conns, xmid, ymid, save_path, title_suffix=""):
     """Versión de plot_gsph_fc con título personalizado para múltiples runs."""
+    if plt is None:
+        return
     plt.figure(figsize=(10,10))
     
     all_points = []
@@ -611,7 +904,8 @@ def _plot_with_title(routes, conns, xmid, ymid, save_path, title_suffix=""):
 
 def _create_comparison_plot(all_runs_data, inst_name, save_path, best_run_idx):
     """Genera un grid comparativo de todos los runs."""
-    import matplotlib.pyplot as plt
+    if plt is None:
+        return
     import matplotlib.gridspec as gridspec
     
     n_runs = len(all_runs_data)
@@ -667,7 +961,10 @@ if __name__ == "__main__":
     import csv
     import threading
     import math
-    import matplotlib.pyplot as _plt
+    try:
+        import matplotlib.pyplot as _plt
+    except Exception:
+        _plt = None
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
     instances_dir = os.path.abspath(BASE_DIR)
@@ -732,6 +1029,8 @@ if __name__ == "__main__":
 
     def plot_resource_times(times, rss, cpu, outpath):
         if not times: return
+        if _plt is None:
+            return
         fig, ax1 = _plt.subplots(figsize=(8,4))
         ax1.plot(times, [r/1024/1024 for r in rss], 'r-', label='RSS (MB)')
         ax1.set_xlabel('time (s)')
@@ -759,7 +1058,7 @@ if __name__ == "__main__":
             print(f"Skipped {fname}: read error")
             continue
 
-        num_runs = 10 if profile_flag else 1
+        num_runs = PROFILE_RUNS if profile_flag else 1
         all_results = []
         all_times = []
         all_runs_data = []  # Guardar datos de TODAS las ejecuciones
@@ -943,8 +1242,9 @@ if __name__ == "__main__":
                         for t,e in _events:
                             ew.writerow([f"{t:.6f}", e])
                     try:
+                        if _plt is None:
+                            raise RuntimeError("matplotlib unavailable")
                         times = [t for t,_ in _events]
-                        labels = [e for _,e in _events]
                         fig, ax = _plt.subplots(figsize=(10, max(2, len(times)*0.15)))
                         ax.hlines(1, 0, max(times) if times else 1, color='white')
                         for i, (tt, ev) in enumerate(_events):

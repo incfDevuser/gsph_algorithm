@@ -1,0 +1,51 @@
+# AGENTS.md
+
+Research repo for the **GSPH** (Geometric Split and Polish Heuristic) TSP algorithm.
+Two parts: Python experiment harness under `experiments/`, and a LaTeX paper at the root
+(`samplepaper.tex`, `test.tex`, `bibliografia.bib`). Code comments and docs are in Spanish.
+
+## Setup
+- Python **3.11.5** (`.python-version`). Use the repo venv:
+  ```bash
+  python3 -m venv .venv && source .venv/bin/activate
+  pip install -r requirements.txt   # numpy, scipy, matplotlib, psutil, memory-profiler, pympler, pylint
+  ```
+- Heavy deps (`scipy`, `matplotlib`, `psutil`, `pympler`, `memory_profiler`) are imported in
+  `try/except`; the algorithm degrades gracefully if a dep is missing. Don't assume they're loaded.
+
+## Running the algorithm — working directory matters
+`GSPH_BASE.py` uses **relative paths** (`BASE_DIR="../instances/standard"`, `RESULTS_DIR="../results"`),
+so it MUST be run from `experiments/algorithms/`, not the repo root.
+```bash
+cd experiments/algorithms
+python3 GSPH_BASE.py                 # all instances in ../instances/standard
+python3 GSPH_BASE.py berlin52        # single instance (name or file.tsp; substring match allowed)
+python3 GSPH_BASE.py --profile berlin52   # --profile = 10 runs, best-of-10, + memory/CPU/event CSVs
+GSPH_LIMIT=5 python3 GSPH_BASE.py    # cap number of instances processed
+```
+Outputs go to `experiments/results/<instance>/` plus a global `results/summary.csv`.
+`results/*` is git-ignored (only `.gitkeep` tracked).
+
+## Key files
+- `experiments/algorithms/GSPH_BASE.py` — current/recommended version (2-opt + DLB, Or-opt, ILS,
+  kNN + Delaunay candidate sets). Core solver is `gsph_fc()`; tunables are module constants at the
+  top (`TIME_BUDGET_S`, `CAND_M`, `CAND_KNN`, `ILS_ITERS`, etc.).
+- `experiments/algorithms/GSPH_V1.py` — older baseline; keep for comparison, don't develop on it.
+- `experiments/scripts/run_all_and_latex.py` — runs the full TSPLIB benchmark and emits LaTeX GAP
+  tables. Spawns `GSPH_BASE.py` via subprocess with `cwd=ALGO_DIR`, so run it from anywhere.
+- `experiments/scripts/compare_runs.py` — builds a grid PNG from `--profile` per-run plots.
+- `experiments/scripts/verify_structure.py` — sanity-checks expected layout (note: it lists some
+  script names that don't exist; treat its list as aspirational, not authoritative).
+
+## Data / conventions
+- Instances are TSPLIB `.tsp` files (`instances/standard/`, `instances/large/`). Parser only reads
+  `NODE_COORD_SECTION`; distances are **EUC_2D rounded to integer** (`int(dist + 0.5)`) — this is the
+  official TSPLIB metric and how GAP-vs-BKS is computed. `eucl_float()` is used only for fast
+  heuristic decisions, not for reported tour length.
+- Best-Known Solutions: hardcoded `BKS` dict in `run_all_and_latex.py` and `benchmarks/BKS/BKS_TSP.txt`.
+- No test suite, linter config, or CI. `pylint` is installed but unconfigured.
+
+## Gotchas
+- `experiments/README.md` references `run_all_instances.py` and `aggregate_resources.py` — these do
+  **not** exist. The real entrypoints are the three scripts listed above.
+- matplotlib uses the `Agg` backend (no GUI); it writes PNGs directly.

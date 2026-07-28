@@ -1,6 +1,0 @@
-__pycache__
-fastapi-env
-.DS_Store
-.env
-*.pyc
-.vscode
