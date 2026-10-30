@@ -12,9 +12,10 @@ Code comments, output files and docs are in **Spanish**; keep new ones in Spanis
 the same operating notes for other agents; keep the two in sync when either changes.
 
 ## Active work on this branch (`rutas-reales`)
-This branch is for the **real-delivery project**, not the TSPLIB paper. The paper lives on the
-`revision-paper` branch (PR to `main`, current paper `samplepaper_v3.tex`); this branch forked from
-`main` before that work, so the paper files and `GSPH_BASE.py` here are older — don't edit them here.
+This branch is for the **real-delivery project**, not the TSPLIB paper. It already contains all the
+paper work (`main` with the v2 revision, plus the v3 from `revision-paper`, merged on 2026-10-30), so
+it merges cleanly into `main`. Paper changes still belong on `revision-paper`/`main`; keep this
+branch's commits about `experiments/real/` and the delivery design.
 - Goal: several drivers, routes on real streets, and **exact promised delivery times** (±5 min, or a
   1-hour window), always in simulation. Approved design (read it first):
   `docs/superpowers/specs/2026-10-30-entregas-hora-exacta-design.md`.

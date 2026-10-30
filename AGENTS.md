@@ -8,8 +8,9 @@ all cite `bibliografia.bib`). Code comments and docs are in Spanish. `REPRODUCIR
 behind every table and figure.
 
 ## Active work on this branch (`rutas-reales`)
-Real-delivery project (not the TSPLIB paper, which lives on `revision-paper`; don't edit paper files
-or `GSPH_BASE.py` here). Goal: several drivers, real-street routes, exact promised delivery times
+Real-delivery project (not the TSPLIB paper). The branch already includes all paper work (`main` +
+the v3 from `revision-paper`), so it merges cleanly into `main`; keep paper edits on
+`revision-paper`/`main` and this branch's commits about `experiments/real/`. Goal: several drivers, real-street routes, exact promised delivery times
 (±5 min or a 1-hour window), in simulation. Approved design:
 `docs/superpowers/specs/2026-10-30-entregas-hora-exacta-design.md`. Nothing of it is implemented yet;
 next step is the implementation plan for its 4 phases. Existing pieces and roadmap:
