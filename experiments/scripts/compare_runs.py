@@ -6,10 +6,12 @@ from PIL import Image
 import argparse
 
 def create_comparison_grid(instance_dir, output_name="comparacion_runs.png", max_cols=3):
+    runs_dir = os.path.join(instance_dir, "graficos", "runs")
+    search_dir = runs_dir if os.path.isdir(runs_dir) else instance_dir
     run_images = []
-    for file in sorted(os.listdir(instance_dir)):
-        if file.startswith('grafico_') and '_run_' in file and file.endswith('.png'):
-            run_images.append(os.path.join(instance_dir, file))
+    for file in sorted(os.listdir(search_dir)):
+        if file.endswith('.png') and ('_run_' in file or file.startswith('run_')):
+            run_images.append(os.path.join(search_dir, file))
     
     if not run_images:
         print(f"No se encontraron gráficos de runs en {instance_dir}")
@@ -35,7 +37,8 @@ def create_comparison_grid(instance_dir, output_name="comparacion_runs.png", max
         y = row * cell_height
         grid_image.paste(img, (x, y))
     
-    output_path = os.path.join(instance_dir, output_name)
+    output_base = os.path.join(instance_dir, "graficos") if os.path.isdir(runs_dir) else instance_dir
+    output_path = os.path.join(output_base, output_name)
     grid_image.save(output_path, quality=95)
     print(f"Comparación guardada en: {output_path}")
     

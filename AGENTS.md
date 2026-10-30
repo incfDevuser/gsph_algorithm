@@ -20,11 +20,27 @@ so it MUST be run from `experiments/algorithms/`, not the repo root.
 cd experiments/algorithms
 python3 GSPH_BASE.py                 # all instances in ../instances/standard
 python3 GSPH_BASE.py berlin52        # single instance (name or file.tsp; substring match allowed)
-python3 GSPH_BASE.py --profile berlin52   # --profile = 10 runs, best-of-10, + memory/CPU/event CSVs
+python3 GSPH_BASE.py --profile berlin52   # --profile = N runs (best-of-N), N via GSPH_PROFILE_RUNS (default 10)
 GSPH_LIMIT=5 python3 GSPH_BASE.py    # cap number of instances processed
 ```
-Outputs go to `experiments/results/<instance>/` plus a global `results/summary.csv`.
-`results/*` is git-ignored (only `.gitkeep` tracked).
+
+### Single strong mode
+`GSPH_BASE.py` now always uses the stronger polish: time-driven ILS with
+incremental 2-opt reoptimizing only the perturbed region + Or-opt with reversed
+insertion. It is designed to get far closer to BKS (often exact) while keeping
+runtime adaptive to `n`.
+```bash
+python3 GSPH_BASE.py a280                        # near/at-BKS, slower than old fast mode
+GSPH_QUALITY_TIME_CAP=30 python3 GSPH_BASE.py ...   # per-run time cap (default 30s)
+```
+Budget scales with `n` (`quality_time_budget()`); for `n>250` the solver bumps
+`CAND_KNN` to 40 automatically.
+
+Outputs go to `experiments/results/<instance>/` (`resumen.txt`, `estadisticas_runs.txt`,
+and `graficos/` with `ruta_final.png`, `ensamblaje_cuadrantes.png`, `orden_visita.png`,
+plus `comparacion_runs.png` + `runs/` under `--profile`) plus a global `results/summary.csv`.
+`results/*` is git-ignored (only `.gitkeep` tracked). Plots need `matplotlib`; use the
+repo venv (`.venv/bin/python`), the system `python3` here lacks it.
 
 ## Key files
 - `experiments/algorithms/GSPH_BASE.py` — current/recommended version (2-opt + DLB, Or-opt, ILS,
