@@ -4,11 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Research repo for **GSPH** (Geometric Split and Polish Heuristic), a 2D Euclidean TSP heuristic.
 Two halves: a Python experiment harness in `experiments/` and an LLNCS-class LaTeX paper at the root
-(`samplepaper_v2.tex` is the current paper, about GSPH_V2, and `samplepaper_v2_es.tex` its Spanish
-translation with the same tables — keep both in sync; `samplepaper.tex` is the previous version
-and `test.tex` an older draft; all cite `bibliografia.bib`).
+(`samplepaper_v3.tex` is the current paper — a standalone rewrite about GSPH_V2 that adds the
+convergence study and the wide sensitivity — and `samplepaper_v3_es.tex` its Spanish translation;
+keep both in sync. `samplepaper_v2*.tex` is the previous revision, `samplepaper.tex` and `test.tex`
+older drafts; all cite `bibliografia.bib`). `REPRODUCIR.md` maps every table/figure to its command.
 Code comments, output files and docs are in **Spanish**; keep new ones in Spanish. `AGENTS.md` holds
 the same operating notes for other agents; keep the two in sync when either changes.
+
+## Active work on this branch (`rutas-reales`)
+This branch is for the **real-delivery project**, not the TSPLIB paper. It already contains all the
+paper work (`main` with the v2 revision, plus the v3 from `revision-paper`, merged on 2026-10-30), so
+it merges cleanly into `main`. Paper changes still belong on `revision-paper`/`main`; keep this
+branch's commits about `experiments/real/` and the delivery design.
+- Goal: several drivers, routes on real streets, and **exact promised delivery times** (±5 min, or a
+  1-hour window), always in simulation. Approved design (read it first):
+  `docs/superpowers/specs/2026-10-30-entregas-hora-exacta-design.md`.
+- Status: design approved, **nothing of it implemented yet**. Next step is the implementation plan
+  (superpowers:writing-plans) for the 4 phases in the design, then build phase 1.
+- What already works: `experiments/real/` (OSRM client, single-vehicle ATSP solver, `ciudad.py`);
+  entry point and roadmap in `experiments/real/README.md`.
+- Start OSRM before anything that calls it: `bash experiments/real/setup_osrm.sh` (map already
+  processed in `experiments/data/osm/`, so it only starts the `osrm-chile` container on port 5001).
 
 ## Setup
 `.python-version` says 3.11.5, but the existing `.venv` runs Python 3.14 (with numba 0.68.1).
@@ -143,6 +159,27 @@ BKS live in two places: the `BKS` dict in `run_all_and_latex.py` (used for GAPs)
   the benchmark tables.
 - `compare_runs.py` globs `graficos/runs/` for `run_*.png` / `*_run_*.png`; keep plot names aligned.
 
+## Real road routes (`experiments/real/`)
+Separate from the TSPLIB pipeline: stops on a real street network, cost = OSRM travel time.
+- `setup_osrm.sh` downloads `chile-latest.osm.pbf` (Geofabrik, ~350 MB) into the git-ignored
+  `experiments/data/osm/`, processes it with the official `osrm-backend:v6.0.0` docker image (~1 min)
+  and runs container `osrm-chile` on **port 5001** (5000 is macOS AirPlay). `osrm_cliente.py` reads
+  `OSRM_URL`. OSRM v6's `car.lua` has no signal penalty (falls back to 2 s); the script injects
+  `traffic_signal_penalty` (env `SEMAFORO_S`, default 15 s; change it with `--rebuild`).
+- `solver_ruta.py`: ATSP solver (`resolver(D, xy, deposito, tiempo, semilla, retorno)`), integer
+  costs in tenths of a second. Same ideas as V2 (candidate lists, queue local search, local
+  double-bridge ILS with temperature, multi-start funnel incl. a Hilbert/quadrant start), but rewritten
+  for asymmetric costs: the 2-opt never reverses the complement (in ATSP that is another tour), it
+  evaluates both reconnections of each edge pair, and the inner reversed-arc cost comes from forward/
+  backward prefix sums `F`/`B`, recomputed after every applied move (O(n), fine for ≤ a few thousand
+  stops). Rejected kicks restore a full copy (no journal). `retorno=False` = open route via
+  `D[:, depot] = 0`. Validated vs Held-Karp (n ≤ 12, 0 gap).
+- `ciudad.py`: random stops in a preset zone (`ZONAS`) snapped with `/nearest?exclude=motorway` (else
+  stops land on Costanera Norte), or `--csv lat,lon[,nombre]` (row 1 = depot), or `--instancia
+  instancia.npz` to rerun without OSRM. Compares against OR-Tools GLS (same time) and the
+  straight-line-optimized tour measured on streets; writes `experiments/results/real/<name>/`
+  (`resumen.txt`, `orden.csv`, `instancia.npz`, `mapa.html` via folium + OSRM route geometry).
+
 ## Paper revision experiments (`experiments/scripts/`)
 Each table added in the review of `samplepaper_v2.tex` has its own script (all take `--workers`, write
 long-format CSV + summary under `experiments/results/<dir>/`, and validate every tour):
@@ -157,6 +194,12 @@ long-format CSV + summary under `experiments/results/<dir>/`, and validate every
   `PIP_CONSTRAINT` containing `scikit-build-core<0.10`.
 - `remedir_v1.py` → `v1_remedido/`: re-runs GSPH_BASE best-of-5; a partial run (30/37) confirmed the
   paper's previous-implementation numbers (`v1_verificacion_parcial.csv`).
+- `convergencia.py` → `convergencia/`: best-tour GAP vs time (clock starts after D/candidates) for
+  vecino/particion/gsph_fc; calls `_ils_block` in blocks of 100 kicks (same search as big blocks,
+  numba RNG keeps its state) and draws `convergencia.png` (copied to `Resultados_v3/`).
+- `held_karp.py`: exact optimum for tiny instances (eil10 = 159, eil20 = 243).
+- `sensibilidad_parametros.py --amplio`: the same variants on 16 instances (100–1,889 cities,
+  uniform/clustered/drilling) → `sens_amplio_*.csv`.
 - `tablas_revision.py`: turns those CSVs into LaTeX (`experiments/results/tablas_revision.tex`).
 Run experiments one at a time when timings matter; times taken with other jobs running are only
 comparable within the same table. `eil10`/`eil20` are subsets of eil51 (optima 159/243 by Held-Karp).
@@ -166,5 +209,7 @@ comparable within the same table. `eil10`/`eil20` are subsets of eil51 (optima 1
 - `verify_structure.py` lists some scripts that don't exist — aspirational, not authoritative.
 - `experiments/README.md` references `run_all_instances.py` and `aggregate_resources.py`, which do
   not exist, and an older output layout (`resultados.txt`, `grafico_*.png`).
-- `samplepaper_v2.tex` takes its figures from `Resultados_v2/` (in the repo); the old
+- `samplepaper_v3*.tex` take figures from `Resultados_v2/` and `Resultados_v3/` (both in the repo).
+  v3 cites an anonymized repo URL placeholder (`anonymous.4open.science/r/GSPH-FC`) that the author
+  must replace before submission. `samplepaper_v2.tex` uses only `Resultados_v2/`; the old
   `samplepaper.tex` points to `Resultados/*.png`, which is not. No LaTeX toolchain is installed locally.

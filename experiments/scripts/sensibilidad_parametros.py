@@ -12,6 +12,7 @@ Parámetros (constante del módulo GSPH_V2 -> valores probados; el default va en
 Uso:
   python experiments/scripts/sensibilidad_parametros.py --workers 3
   python experiments/scripts/sensibilidad_parametros.py --resumen
+  python experiments/scripts/sensibilidad_parametros.py --amplio --workers 4   # 16 instancias
 Salida: experiments/results/sensibilidad/{sens_runs.csv, sens_resumen.csv}
 """
 import argparse, csv, os, sys, time
@@ -29,6 +30,11 @@ from benchmark_v2 import load_bks, collect  # noqa: E402
 
 OUT_DIR = os.path.join(EXP_DIR, "results", "sensibilidad")
 INSTANCIAS = ["kroE100", "lin318", "pcb442", "rat783", "pr1002", "d1655"]
+# Conjunto amplio (--amplio): tamaños de 100 a 1.889 y distribuciones distintas:
+# uniformes aleatorias (kro*, ch*, rd*), agrupadas (fl*), perforación/PCB (a280, pcb*, d*, rat*, u*)
+# y otras de TSPLIB (pr*, vm*, rl*).
+INSTANCIAS_AMPLIO = ["kroA100", "ch150", "kroB200", "a280", "rd400", "fl417", "pcb442", "d493",
+                     "rat783", "pr1002", "u1060", "pcb1173", "fl1400", "d1655", "vm1748", "rl1889"]
 DEFAULTS = {"FRONTIER_TOPK": 3, "PARTITION_PORTFOLIO_LIMIT": 6, "ACCEPT_TEMP": 0.2,
             "DB_WINDOW_DIV": 8, "STALL_FACTOR": 300}
 VARIANTES = [("default", None, None)] + [
@@ -61,7 +67,7 @@ def correr(args):
             f"{time.monotonic() - t0:.3f}", info["kicks"]]
 
 
-def resumir(p_runs, p_out):
+def resumir(p_runs, p_out, instancias=INSTANCIAS):
     bks = load_bks()
     grupos = defaultdict(list)
     with open(p_runs) as f:
@@ -71,7 +77,7 @@ def resumir(p_runs, p_out):
     filas = []
     for var in orden:
         gb, ga, tt, hits, runs = [], [], [], 0, 0
-        for inst in INSTANCIAS:
+        for inst in instancias:
             rs = grupos.get((var, inst), [])
             if not rs:
                 continue
@@ -98,15 +104,18 @@ def main():
     ap.add_argument("--seed", type=int, default=1000)
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--resumen", action="store_true")
+    ap.add_argument("--amplio", action="store_true", help="usar las 16 instancias de INSTANCIAS_AMPLIO")
     args = ap.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
-    p_runs = os.path.join(OUT_DIR, "sens_runs.csv")
-    p_res = os.path.join(OUT_DIR, "sens_resumen.csv")
+    instancias = INSTANCIAS_AMPLIO if args.amplio else INSTANCIAS
+    sufijo = "_amplio" if args.amplio else ""
+    p_runs = os.path.join(OUT_DIR, f"sens{sufijo}_runs.csv")
+    p_res = os.path.join(OUT_DIR, f"sens{sufijo}_resumen.csv")
     if not args.resumen:
         rutas = {name: path for _, name, path, _ in collect(False)}
         trabajos = [(inst, rutas[inst], p, v, r, args.seed + r)
-                    for _, p, v in VARIANTES for inst in INSTANCIAS for r in range(args.runs)]
-        trabajos.sort(key=lambda t: -INSTANCIAS.index(t[0]))
+                    for _, p, v in VARIANTES for inst in instancias for r in range(args.runs)]
+        trabajos.sort(key=lambda t: -instancias.index(t[0]))
         with open(p_runs, "w", newline="") as f:
             csv.writer(f).writerow(["instance", "n", "variant", "run", "seed", "L", "t", "kicks"])
         t_all = time.time()
@@ -116,7 +125,7 @@ def main():
                     csv.writer(f).writerow(fila)
                 if k % 50 == 0 or k == len(trabajos):
                     print(f"  {k}/{len(trabajos)} runs ({time.time() - t_all:.0f}s)", flush=True)
-    for fila in resumir(p_runs, p_res):
+    for fila in resumir(p_runs, p_res, instancias):
         print(" ".join(fila))
 
 

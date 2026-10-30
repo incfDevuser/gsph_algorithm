@@ -16,7 +16,7 @@ Dos modos de LKH, cada run es una ejecución independiente con RUNS = 1 y SEED =
 Cada tour de LKH se lee y su largo se recalcula con la métrica EUC_2D del repo.
 
 Uso:
-  python experiments/scripts/comparar_lkh.py --workers 3
+  python experiments/scripts/comparar_lkh.py --max-n 2000 --runs 3 --workers 4   # tabla del paper
   python experiments/scripts/comparar_lkh.py --only kroE100 pr1002 --runs 2
   python experiments/scripts/comparar_lkh.py --resumen
 Salida: experiments/results/lkh/{lkh_runs.csv, lkh_resumen.csv}
@@ -143,6 +143,7 @@ def main():
     ap.add_argument("--runs", type=int, default=10, help="runs por instancia con n <= 2000")
     ap.add_argument("--runs-grandes", type=int, default=3, help="runs por instancia con n > 2000")
     ap.add_argument("--only", nargs="*")
+    ap.add_argument("--max-n", type=int, default=6000, help="solo instancias con n <= este valor")
     ap.add_argument("--modos", nargs="*", default=MODOS, choices=MODOS)
     ap.add_argument("--seed", type=int, default=1000)
     ap.add_argument("--workers", type=int, default=1)
@@ -159,7 +160,8 @@ def main():
             except ImportError:
                 sys.exit(f"No está el binario de LKH en {LKH_BIN} ni elkai (ver la cabecera)")
         bks, t_g = load_bks(), tiempos_gsph()
-        items = [it for it in collect(False) if it[1] not in EXCLUIDAS and it[1] in bks]
+        items = [it for it in collect(False)
+                 if it[1] not in EXCLUIDAS and it[1] in bks and it[0] <= args.max_n]
         if args.only:
             items = [it for it in items if it[1] in set(args.only)]
         trabajos = []

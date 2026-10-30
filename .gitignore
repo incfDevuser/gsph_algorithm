@@ -86,3 +86,6 @@ coverage.xml
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Datos OSM / OSRM (pesados, se regeneran con experiments/real/setup_osrm.sh)
+experiments/data/

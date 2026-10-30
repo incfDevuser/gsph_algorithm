@@ -6,3 +6,8 @@ memory-profiler
 pympler
 pylint
 numba
+
+# Rutas reales (experiments/real/): cliente OSRM, mapas y comparación
+requests
+folium
+ortools
