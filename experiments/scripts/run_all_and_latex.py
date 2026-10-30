@@ -1,9 +1,9 @@
 """
-Ejecuta TODAS las instancias del paper con GSPH_BASE
+Ejecuta TODAS las instancias del paper con GSPH_BASE (o GSPH_V2 con --algo)
 y genera tablas LaTeX con los GAPs vs BKS.
 """
 
-import subprocess, sys, os, time, re
+import argparse, subprocess, sys, os, time, re
 
 SMALL = [
     "eil10", "eil20", "eil51", "eil76", "eil101",
@@ -61,14 +61,14 @@ BKS = {
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ALGO_DIR = os.path.join(SCRIPT_DIR, "..", "algorithms")
-GSPH_BASE = os.path.join(ALGO_DIR, "GSPH_BASE.py")
+ALGOS = ("GSPH_BASE", "GSPH_V2")
+ALGO_NAME = "GSPH_BASE"   # Se cambia con --algo
 RESULTS_DIR = os.path.join(SCRIPT_DIR, "..", "results")
-LATEX_OUT = os.path.join(RESULTS_DIR, "tablas_gsph_base.tex")
 RUNS = 20
 
 
 def run_instance(name):
-    cmd = [sys.executable, GSPH_BASE, "--profile", name]
+    cmd = [sys.executable, os.path.join(ALGO_DIR, f"{ALGO_NAME}.py"), "--profile", name]
     env = os.environ.copy()
     env["GSPH_PROFILE_RUNS"] = str(RUNS)
     print(f"\n{'='*60}")
@@ -257,15 +257,22 @@ def make_summary_table(all_results):
 
 
 def main():
+    global ALGO_NAME
+    parser = argparse.ArgumentParser(description="Benchmark TSPLIB completo + tablas LaTeX")
+    parser.add_argument("--algo", choices=ALGOS, default="GSPH_BASE")
+    ALGO_NAME = parser.parse_args().algo
+    tag = "base" if ALGO_NAME == "GSPH_BASE" else ALGO_NAME.lower()
+    latex_out = os.path.join(RESULTS_DIR, f"tablas_{ALGO_NAME.lower()}.tex")
+
     os.makedirs(RESULTS_DIR, exist_ok=True)
     print("=" * 60)
-    print("  GSPH_BASE - Benchmark completo TSPLIB")
+    print(f"  {ALGO_NAME} - Benchmark completo TSPLIB")
     print(f"  {len(ALL_INSTANCES)} instancias x {RUNS} runs")
     print("=" * 60)
 
     all_results = {}
     t0 = time.time()
-    progress_path = os.path.join(RESULTS_DIR, "progress_base.txt")
+    progress_path = os.path.join(RESULTS_DIR, f"progress_{tag}.txt")
     with open(progress_path, "w") as f:
         f.write(f"Inicio: {time.strftime('%Y-%m-%d %H:%M:%S')}\n{'='*60}\n")
 
@@ -283,7 +290,7 @@ def main():
     print(f"Completadas: {len(all_results)}/{len(ALL_INSTANCES)}")
 
     latex_parts = []
-    latex_parts.append(f"% GSPH_BASE - {RUNS} runs - {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    latex_parts.append(f"% {ALGO_NAME} - {RUNS} runs - {time.strftime('%Y-%m-%d %H:%M:%S')}")
     latex_parts.append("% Requiere: booktabs, siunitx, float")
     latex_parts.append("")
     latex_parts.append(make_latex_table(
@@ -305,10 +312,10 @@ def main():
     latex_parts.append(make_summary_table(all_results))
 
     full_latex = "\n".join(latex_parts)
-    with open(LATEX_OUT, "w") as f:
+    with open(latex_out, "w") as f:
         f.write(full_latex)
 
-    print(f"\n Tablas LaTeX: {LATEX_OUT}")
+    print(f"\n Tablas LaTeX: {latex_out}")
     print(f"\n{'='*70}")
     print(f"{'Instancia':>12s}  {'BEST':>10s}  {'BKS':>10s}  {'GAP%':>8s}  {'Tiempo':>8s}")
     print(f"{'='*70}")

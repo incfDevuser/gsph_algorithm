@@ -5,6 +5,7 @@ import numpy as np
 import sys
 from math import hypot
 from itertools import product
+from collections import deque
 try:
     from scipy.spatial import cKDTree
 except Exception:
@@ -56,6 +57,9 @@ PARTITION_SHIFT_FRAC        = 0.12
 LIGHT_POLISH_FRACTION       = 0.20
 LIGHT_MAX_SWEEPS_2OPT       = 1
 LIGHT_OR_OPT_L              = 1
+RAW_PREFILTER_PER_PARTITION = 2
+LIGHT_POOL_CAP              = 8
+FINALIST_MARGIN_RATIO       = 1.01
 
 def _env_int(name, default):
     try:
@@ -64,6 +68,31 @@ def _env_int(name, default):
         return default
 
 PROFILE_RUNS = _env_int('GSPH_PROFILE_RUNS', 10)
+
+# Techo de tiempo por run del pulido fuerte (segundos).
+QUALITY_TIME_CAP_S = float(os.getenv('GSPH_QUALITY_TIME_CAP', '30'))
+
+def quality_time_budget(n_nodes):
+    """Presupuesto de pulido fuerte según tamaño."""
+    if n_nodes <= 150:
+        budget = 5.0
+    elif n_nodes <= 300:
+        budget = 12.0
+    elif n_nodes <= 800:
+        budget = 25.0
+    else:
+        budget = 30.0
+    return min(budget, QUALITY_TIME_CAP_S)
+
+def polish_budget(n_nodes):
+    """Presupuesto de tiempo para el pulido fuerte del modo único."""
+    return quality_time_budget(n_nodes)
+
+def polish_cand_knn(n_nodes):
+    """kNN de candidatos según tamaño."""
+    if n_nodes > 250:
+        return 40
+    return CAND_KNN
 
 Q_ORDER = ['Q1', 'Q2', 'Q4', 'Q3']
 ADJACENCY_CYCLE = [
@@ -180,6 +209,34 @@ def generate_partition_portfolio(pts, shift_frac=PARTITION_SHIFT_FRAC, limit=PAR
         if len(unique) >= limit:
             break
     return unique
+
+def get_search_profile(n_nodes):
+    if n_nodes <= 150:
+        return {
+            'partition_limit': min(PARTITION_PORTFOLIO_LIMIT, 5),
+            'assembly_limit': min(MAX_ASSEMBLY_PER_PARTITION, 5),
+            'per_partition_prefilter': max(1, RAW_PREFILTER_PER_PARTITION),
+            'light_pool_cap': min(LIGHT_POOL_CAP, 8),
+            'finalists': min(2, ASSEMBLY_FINALISTS),
+            'light_fraction': min(LIGHT_POLISH_FRACTION, 0.12),
+        }
+    if n_nodes <= 300:
+        return {
+            'partition_limit': min(PARTITION_PORTFOLIO_LIMIT, 4),
+            'assembly_limit': min(MAX_ASSEMBLY_PER_PARTITION, 4),
+            'per_partition_prefilter': 2,
+            'light_pool_cap': min(LIGHT_POOL_CAP, 6),
+            'finalists': min(2, ASSEMBLY_FINALISTS),
+            'light_fraction': min(LIGHT_POLISH_FRACTION, 0.08),
+        }
+    return {
+        'partition_limit': min(PARTITION_PORTFOLIO_LIMIT, 3),
+        'assembly_limit': min(MAX_ASSEMBLY_PER_PARTITION, 3),
+        'per_partition_prefilter': 1,
+        'light_pool_cap': min(LIGHT_POOL_CAP, 4),
+        'finalists': 1,
+        'light_fraction': min(LIGHT_POLISH_FRACTION, 0.05),
+    }
 
 def best_frontier_pairs(A, B, direction, mid, eps, k=FRONTIER_TOPK):
     if not A or not B:
@@ -442,8 +499,12 @@ def two_opt_dlb(perm, D, cand, max_sweeps=1, skip_prob=SKIP_PROB_2OPT, deadline=
     record_event('two_opt_dlb_exit')
     return perm
 
-def or_opt_move(perm, D, cand, Lmax=OR_OPT_MAX_L, move_limit=OR_OPT_MOVE_LIMIT, deadline=None):
-    """Mueve bloques cortos en tour circular. L=1 por defecto para máxima velocidad."""
+def or_opt_move(perm, D, cand, Lmax=OR_OPT_MAX_L, move_limit=OR_OPT_MOVE_LIMIT, deadline=None, allow_reverse=False):
+    """Mueve bloques cortos en tour circular. L=1 por defecto para máxima velocidad.
+
+    Con allow_reverse=True evalúa también insertar el bloque invertido, lo que
+    casi duplica la vecindad Or-opt del modo fuerte.
+    """
     record_event('or_opt_move_entry')
     if Lmax <= 0:
         return perm
@@ -468,6 +529,7 @@ def or_opt_move(perm, D, cand, Lmax=OR_OPT_MAX_L, move_limit=OR_OPT_MOVE_LIMIT, 
                 anchors = list(set(cand[perm[i]]) | set(cand[perm[end]]))
                 best_gain = 0
                 best_j = None
+                best_rev = False
                 for jnode in anchors:
                     j = pos[jnode]
                     if j == -1:
@@ -484,11 +546,19 @@ def or_opt_move(perm, D, cand, Lmax=OR_OPT_MAX_L, move_limit=OR_OPT_MOVE_LIMIT, 
                     c, d = perm[end], perm[(end+1)%n]
                     e, f = perm[j],  perm[(j+1)%n]
                     removed = D[a,b] + D[c,d] + D[e,f]
-                    added   = D[a,d] + D[e,b] + D[c,f]
-                    gain = removed - added
-                    if gain > best_gain:
-                        best_gain = gain
+                    added_fwd = D[a,d] + D[e,b] + D[c,f]
+                    gain_fwd = removed - added_fwd
+                    if gain_fwd > best_gain:
+                        best_gain = gain_fwd
                         best_j = j
+                        best_rev = False
+                    if allow_reverse and L > 1:
+                        added_rev = D[a,d] + D[e,c] + D[b,f]
+                        gain_rev = removed - added_rev
+                        if gain_rev > best_gain:
+                            best_gain = gain_rev
+                            best_j = j
+                            best_rev = True
                 if best_gain > 0 and best_j is not None:
                     if end < i:
                         perm = perm[i:] + perm[:i]
@@ -496,6 +566,8 @@ def or_opt_move(perm, D, cand, Lmax=OR_OPT_MAX_L, move_limit=OR_OPT_MOVE_LIMIT, 
                         i = 0; end = L-1
                         n = len(perm)
                     block = perm[i:i+L]
+                    if best_rev:
+                        block = block[::-1]
                     del perm[i:i+L]
                     if best_j > i:
                         best_j -= L
@@ -522,6 +594,155 @@ def double_bridge_on_perm(perm):
     d = c + random.randint(1, n//4)
     A = perm[:a]; B = perm[a:b]; C = perm[b:c]; Dd = perm[c:d]; E = perm[d:]
     return A + Dd + C + B + E
+
+def double_bridge_tracked(perm):
+    """Double-bridge que además devuelve los nodos cuyas aristas cambian.
+
+    Sirve para reoptimizar solo la región perturbada en el ILS de quality.
+    """
+    n = len(perm)
+    if n < 8:
+        return perm[:], list(perm)
+    a = 1 + random.randint(0, n//4 - 1)
+    b = a + random.randint(1, n//4)
+    c = b + random.randint(1, n//4)
+    d = c + random.randint(1, n//4)
+    affected = [
+        perm[a-1], perm[c], perm[d-1], perm[b],
+        perm[c-1], perm[a], perm[b-1], perm[d],
+        perm[0], perm[-1],
+    ]
+    A = perm[:a]; B = perm[a:b]; C = perm[b:c]; Dd = perm[c:d]; E = perm[d:]
+    return A + Dd + C + B + E, affected
+
+def _two_opt_queue(perm, pos, dontlook, D, cand, active, deadline):
+    """2-opt con lista de vecinos y don't-look bits dirigido por cola.
+
+    Solo procesa los nodos 'active' y los que se reactivan por movimientos,
+    manteniendo pos/dontlook persistentes. Cobertura equivalente a two_opt_dlb
+    pero incremental (clave para ILS con reoptimización local).
+    """
+    n = len(perm)
+    queue = deque()
+    inq = bytearray(len(dontlook))
+    for node in active:
+        dontlook[node] = False
+        if not inq[node]:
+            inq[node] = 1
+            queue.append(node)
+
+    while queue:
+        if deadline and time.monotonic() > deadline:
+            return
+        a1 = queue.popleft()
+        inq[a1] = 0
+        if dontlook[a1]:
+            continue
+        a = pos[a1]
+        b1 = perm[(a+1) % n]
+        best_gain = 0
+        best_c = None
+        for cnode in cand[a1]:
+            c = pos[cnode]
+            if c == -1 or c == a or c == (a+1) % n:
+                continue
+            a2 = perm[c]; b2 = perm[(c+1) % n]
+            gain = (D[a1,b1] + D[a2,b2]) - (D[a1,a2] + D[b1,b2])
+            if gain > best_gain:
+                best_gain = gain
+                best_c = c
+        if best_gain > 0 and best_c is not None:
+            i, k = a+1, best_c
+            if k < i:
+                i, k = k+1, a
+            perm[i:k+1] = reversed(perm[i:k+1])
+            for idx in range(i, k+1):
+                pos[perm[idx]] = idx
+            for node in (a1, b1, perm[i], perm[k], perm[(i-1) % n], perm[(k+1) % n]):
+                dontlook[node] = False
+                if not inq[node]:
+                    inq[node] = 1
+                    queue.append(node)
+        else:
+            dontlook[a1] = True
+
+def _polish_quality(nodes, route, D, cand, budget_s, or_lmax):
+    """Pulido fuerte: ILS dirigido por tiempo con reoptimización local.
+
+    - Óptimo local inicial con 2-opt(cola) + Or-opt(invertido) + 2-opt.
+    - ILS while time < deadline: double-bridge + reoptimización SOLO de la
+      región perturbada -> muchas más iteraciones por segundo.
+    """
+    N = len(nodes)
+    if len(route) < 10:
+        return route[:]
+
+    deadline = time.monotonic() + max(0.05, budget_s)
+    perm = ensure_valid_perm(route_to_perm(route, nodes), N, D)
+    n = len(perm)
+    pos = [-1]*N
+    for i, v in enumerate(perm):
+        pos[v] = i
+    dontlook = [False]*N
+
+    # Óptimo local inicial completo.
+    _two_opt_queue(perm, pos, dontlook, D, cand, list(perm), deadline)
+    perm = or_opt_move(perm, D, cand, Lmax=or_lmax, deadline=deadline, allow_reverse=True)
+    for i, v in enumerate(perm):
+        pos[v] = i
+    dontlook = [False]*N
+    _two_opt_queue(perm, pos, dontlook, D, cand, list(perm), deadline)
+
+    best = perm[:]
+    best_len = tour_len_from_perm(best, D)
+    cur = perm[:]
+    cur_len = best_len
+    fails = 0
+    iters = 0
+
+    while time.monotonic() < deadline:
+        iters += 1
+        kick, affected = double_bridge_tracked(cur)
+        for i, v in enumerate(kick):
+            pos[v] = i
+        # Reoptimización local: solo la región perturbada (+ vecinos candidatos).
+        for node in range(N):
+            dontlook[node] = True
+        active = set(affected)
+        for node in affected:
+            for cnode in cand[node]:
+                active.add(cnode)
+        _two_opt_queue(kick, pos, dontlook, D, cand, list(active), deadline)
+
+        L = tour_len_from_perm(kick, D)
+        if L < best_len:
+            best = kick[:]
+            best_len = L
+            cur = kick
+            cur_len = L
+            fails = 0
+            # Intensificación ocasional con Or-opt sobre el nuevo mejor.
+            if time.monotonic() < deadline:
+                intensified = or_opt_move(best[:], D, cand, Lmax=or_lmax, deadline=deadline, allow_reverse=True)
+                iL = tour_len_from_perm(intensified, D)
+                if iL < best_len:
+                    best = intensified
+                    best_len = iL
+                    cur = best[:]
+                    cur_len = iL
+        elif L <= cur_len:
+            cur = kick
+            cur_len = L
+            fails += 1
+        else:
+            fails += 1
+            if fails >= 30:
+                cur = best[:]
+                cur_len = best_len
+                fails = 0
+
+    record_event(f'quality_ils_iters_{iters}')
+    return perm_to_route(best, nodes)
 
 def _polish_with_config(nodes, route, D, cand, budget_s, initial_sweeps, or_lmax, final_sweeps, ils_iters, skip_prob):
     if len(route) < 10:
@@ -557,7 +778,7 @@ def _polish_with_config(nodes, route, D, cand, budget_s, initial_sweeps, or_lmax
             record_event(f'ils_improvement_{ils_iter}')
     return perm_to_route(best, nodes)
 
-def polish_light(nodes, route, D=None, cand=None):
+def polish_light(nodes, route, D=None, cand=None, budget_fraction=LIGHT_POLISH_FRACTION):
     if len(route) < 10:
         return route[:]
     if D is None:
@@ -569,7 +790,7 @@ def polish_light(nodes, route, D=None, cand=None):
         route,
         D,
         cand,
-        budget_s=TIME_BUDGET_S * LIGHT_POLISH_FRACTION,
+        budget_s=TIME_BUDGET_S * budget_fraction,
         initial_sweeps=LIGHT_MAX_SWEEPS_2OPT,
         or_lmax=LIGHT_OR_OPT_L,
         final_sweeps=1,
@@ -578,7 +799,7 @@ def polish_light(nodes, route, D=None, cand=None):
     )
 
 def polish_fast(nodes, route, D=None, cand=None):
-    """Pulido con presupuesto de tiempo: 2-opt(DLB) → Or-opt → 2-opt(DLB) → ILS."""
+    """Pulido fuerte por tiempo: ILS incremental + 2-opt local + Or-opt invertido."""
     record_event('polish_fast_entry')
     if len(route) < 10:
         record_event('polish_fast_short_exit')
@@ -588,17 +809,13 @@ def polish_fast(nodes, route, D=None, cand=None):
     if cand is None:
         cand = build_candidate_sets(nodes, m=CAND_M, knn_k=CAND_KNN, use_delaunay=USE_DELAUNAY)
 
-    best_route = _polish_with_config(
+    best_route = _polish_quality(
         nodes,
         route,
         D,
         cand,
-        budget_s=TIME_BUDGET_S,
-        initial_sweeps=MAX_SWEEPS_2OPT,
+        budget_s=polish_budget(len(nodes)),
         or_lmax=OR_OPT_MAX_L,
-        final_sweeps=2,
-        ils_iters=ILS_ITERS,
-        skip_prob=max(0.0, SKIP_PROB_2OPT * 0.33),
     )
     record_event('polish_fast_exit')
     return best_route
@@ -687,11 +904,15 @@ def gsph_fc(nodes, MAX_ITER_LOCAL=800 ,EPS_FRONTIER=5):
         return {'QALL': []}, [], 0, 0.0, 0.0
 
     D = build_distance_matrix(nodes)
-    cand = build_candidate_sets(nodes, m=CAND_M, knn_k=CAND_KNN, use_delaunay=USE_DELAUNAY)
+    knn_k = polish_cand_knn(len(nodes))
+    cand_m = max(CAND_M, knn_k)
+    cand = build_candidate_sets(nodes, m=cand_m, knn_k=knn_k, use_delaunay=USE_DELAUNAY)
+    profile = get_search_profile(len(nodes))
+    raw_candidate_pool = []
     candidate_pool = []
 
     record_event('candidate_generation_start')
-    for part_idx, (part_label, xmid, ymid) in enumerate(generate_partition_portfolio(nodes), start=1):
+    for part_idx, (part_label, xmid, ymid) in enumerate(generate_partition_portfolio(nodes, limit=profile['partition_limit']), start=1):
         quads, xmid, ymid = subdivide_quadrants(nodes, xmid=xmid, ymid=ymid)
         frontier_options = {}
         for q1, q2, direction in ADJACENCY_CYCLE:
@@ -704,23 +925,43 @@ def gsph_fc(nodes, MAX_ITER_LOCAL=800 ,EPS_FRONTIER=5):
                 k=FRONTIER_TOPK,
             )
 
-        for choice_map in _enumerate_frontier_choice_maps(frontier_options, max_count=MAX_ASSEMBLY_PER_PARTITION):
+        partition_candidates = []
+        for choice_map in _enumerate_frontier_choice_maps(frontier_options, max_count=profile['assembly_limit']):
             routes, connections, initial_tour = _build_assembly_candidate(quads, choice_map, MAX_ITER_LOCAL)
             if not initial_tour:
                 continue
-            light_tour = polish_light(nodes, initial_tour, D=D, cand=cand)
-            candidate_pool.append({
+            partition_candidates.append({
                 'partition_label': part_label,
                 'partition_idx': part_idx,
                 'xmid': xmid,
                 'ymid': ymid,
                 'connections': connections,
                 'seed_routes': routes,
-                'tour': light_tour,
-                'light_len': total_tour_length(light_tour),
+                'tour': initial_tour,
                 'raw_len': total_tour_length(initial_tour),
             })
+        partition_candidates.sort(key=lambda item: item['raw_len'])
+        raw_candidate_pool.extend(partition_candidates[:profile['per_partition_prefilter']])
     record_event('candidate_generation_end')
+
+    raw_candidate_pool.sort(key=lambda item: item['raw_len'])
+    raw_candidate_pool = raw_candidate_pool[:max(1, profile['light_pool_cap'])]
+
+    record_event('light_polish_start')
+    for candidate in raw_candidate_pool:
+        light_tour = polish_light(nodes, candidate['tour'], D=D, cand=cand, budget_fraction=profile['light_fraction'])
+        candidate_pool.append({
+            'partition_label': candidate['partition_label'],
+            'partition_idx': candidate['partition_idx'],
+            'xmid': candidate['xmid'],
+            'ymid': candidate['ymid'],
+            'connections': candidate['connections'],
+            'seed_routes': candidate['seed_routes'],
+            'tour': light_tour,
+            'light_len': total_tour_length(light_tour),
+            'raw_len': candidate['raw_len'],
+        })
+    record_event('light_polish_end')
 
     if not candidate_pool:
         quads, xmid, ymid = subdivide_quadrants(nodes)
@@ -739,7 +980,11 @@ def gsph_fc(nodes, MAX_ITER_LOCAL=800 ,EPS_FRONTIER=5):
         })
 
     candidate_pool.sort(key=lambda item: (item['light_len'], item['raw_len']))
-    finalists = candidate_pool[:max(1, min(ASSEMBLY_FINALISTS, len(candidate_pool)))]
+    finalists_count = 1
+    if len(candidate_pool) > 1 and profile['finalists'] > 1:
+        if candidate_pool[1]['light_len'] <= candidate_pool[0]['light_len'] * FINALIST_MARGIN_RATIO:
+            finalists_count = min(profile['finalists'], len(candidate_pool))
+    finalists = candidate_pool[:finalists_count]
 
     best = None
     record_event('polish_start')
@@ -762,145 +1007,162 @@ def gsph_fc(nodes, MAX_ITER_LOCAL=800 ,EPS_FRONTIER=5):
     record_event('gsph_fc_exit')
     return routes_out, (best['connections'] if best else []), total_len, (best['xmid'] if best else 0.0), (best['ymid'] if best else 0.0)
 
+def _collect_points(routes_or_route):
+    if isinstance(routes_or_route, dict):
+        points = []
+        for route in routes_or_route.values():
+            points.extend(route)
+        return points
+    return list(routes_or_route)
+
+def _plot_bounds(points, xmid=0.0, ymid=0.0):
+    if points:
+        xs = [p[0] for p in points]
+        ys = [p[1] for p in points]
+        xmin, xmax = min(xs), max(xs)
+        ymin, ymax = min(ys), max(ys)
+        padding = max((xmax - xmin), (ymax - ymin), 1.0) * 0.08
+        return xmin - padding, xmax + padding, ymin - padding, ymax + padding
+    return xmid - 100, xmid + 100, ymid - 100, ymid + 100
+
+def _save_figure(fig, save_path):
+    if not save_path:
+        return
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    fig.savefig(save_path, bbox_inches='tight', dpi=140)
+    plt.close(fig)
+
+def _draw_quadrant_background(ax, bounds, xmid, ymid):
+    xmin, xmax, ymin, ymax = bounds
+    alpha = 0.08
+    ax.fill_between([xmin, xmid], [ymid, ymid], [ymax, ymax], color='blue', alpha=alpha)
+    ax.fill_between([xmid, xmax], [ymid, ymid], [ymax, ymax], color='green', alpha=alpha)
+    ax.fill_between([xmin, xmid], [ymin, ymin], [ymid, ymid], color='red', alpha=alpha)
+    ax.fill_between([xmid, xmax], [ymin, ymin], [ymid, ymid], color='orange', alpha=alpha)
+    ax.axvline(xmid, linestyle='-', color='black', alpha=0.45, linewidth=1.2)
+    ax.axhline(ymid, linestyle='-', color='black', alpha=0.45, linewidth=1.2)
+    fontsize = 12
+    ax.text(xmin + (xmid-xmin)/2, ymid + (ymax-ymid)/2, 'Q1', ha='center', va='center', fontsize=fontsize, fontweight='bold', alpha=0.65)
+    ax.text(xmid + (xmax-xmid)/2, ymid + (ymax-ymid)/2, 'Q2', ha='center', va='center', fontsize=fontsize, fontweight='bold', alpha=0.65)
+    ax.text(xmin + (xmid-xmin)/2, ymin + (ymid-ymin)/2, 'Q3', ha='center', va='center', fontsize=fontsize, fontweight='bold', alpha=0.65)
+    ax.text(xmid + (xmax-xmid)/2, ymin + (ymid-ymin)/2, 'Q4', ha='center', va='center', fontsize=fontsize, fontweight='bold', alpha=0.65)
+
+def _draw_closed_route(ax, route, color='navy', linewidth=1.8, alpha=0.95, markersize=8):
+    if len(route) < 2:
+        if len(route) == 1:
+            ax.scatter(route[0][0], route[0][1], s=18, color=color, zorder=4)
+        return
+    x = [p[0] for p in route] + [route[0][0]]
+    y = [p[1] for p in route] + [route[0][1]]
+    ax.plot(x, y, color=color, linewidth=linewidth, alpha=alpha, zorder=2)
+    ax.scatter([p[0] for p in route], [p[1] for p in route], s=markersize, color=color, alpha=min(1.0, alpha + 0.05), zorder=3)
+
+def _visit_label_step(n):
+    if n <= 80:
+        return 1
+    if n <= 200:
+        return 5
+    return 15
+
+def plot_final_route(route, save_path, title):
+    if plt is None:
+        return False
+    fig, ax = plt.subplots(figsize=(10, 10))
+    bounds = _plot_bounds(route)
+    _draw_closed_route(ax, route, color='#163d7a', linewidth=2.0, alpha=0.95, markersize=10)
+    if route:
+        ax.scatter(route[0][0], route[0][1], s=90, color='#0f9d58', edgecolors='white', linewidth=1.2, zorder=5, label='Inicio')
+        ax.text(route[0][0], route[0][1], '1', color='white', fontsize=8, fontweight='bold', ha='center', va='center', zorder=6)
+    ax.set_title(title, fontsize=14)
+    ax.set_xlabel('Coordenada X')
+    ax.set_ylabel('Coordenada Y')
+    ax.grid(True, alpha=0.25)
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_xlim(bounds[0], bounds[1])
+    ax.set_ylim(bounds[2], bounds[3])
+    if route:
+        ax.legend(loc='upper right')
+    _save_figure(fig, save_path)
+    return True
+
+def plot_quadrant_assembly(route, conns, xmid, ymid, save_path, title):
+    if plt is None:
+        return False
+    fig, ax = plt.subplots(figsize=(10, 10))
+    bounds = _plot_bounds(route, xmid, ymid)
+    _draw_quadrant_background(ax, bounds, xmid, ymid)
+    quads, _, _ = subdivide_quadrants(route, xmid=xmid, ymid=ymid)
+    colors = {'Q1': '#2358c9', 'Q2': '#238a3b', 'Q3': '#cc3a3a', 'Q4': '#d97b00'}
+    for q in Q_ORDER:
+        pts = quads.get(q, [])
+        if not pts:
+            continue
+        ax.scatter([p[0] for p in pts], [p[1] for p in pts], s=18, color=colors[q], alpha=0.8, label=q, zorder=3)
+    _draw_closed_route(ax, route, color='#222222', linewidth=1.3, alpha=0.55, markersize=0)
+    if conns:
+        labels = ['Q1-Q2', 'Q2-Q4', 'Q4-Q3', 'Q3-Q1']
+        for idx, (a, b) in enumerate(conns):
+            ax.plot([a[0], b[0]], [a[1], b[1]], linestyle='--', color='#7b2cbf', linewidth=2.2, alpha=0.95, zorder=4)
+            ax.scatter([a[0], b[0]], [a[1], b[1]], color='#7b2cbf', s=48, marker='D', edgecolors='white', linewidth=0.9, zorder=5)
+            mx = (a[0] + b[0]) / 2
+            my = (a[1] + b[1]) / 2
+            if idx < len(labels):
+                ax.text(mx, my, labels[idx], fontsize=8, color='#5a189a', fontweight='bold', ha='center', va='center', zorder=6,
+                        bbox=dict(boxstyle='round,pad=0.18', fc='white', ec='none', alpha=0.85))
+    ax.set_title(title, fontsize=14)
+    ax.set_xlabel('Coordenada X')
+    ax.set_ylabel('Coordenada Y')
+    ax.grid(True, alpha=0.2)
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_xlim(bounds[0], bounds[1])
+    ax.set_ylim(bounds[2], bounds[3])
+    ax.legend(loc='upper right')
+    _save_figure(fig, save_path)
+    return True
+
+def plot_visit_order(route, save_path, title):
+    if plt is None:
+        return False
+    if not route:
+        return False
+    from matplotlib.collections import LineCollection
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    bounds = _plot_bounds(route)
+    n = len(route)
+    closed = route + [route[0]]
+    segments = [[closed[i], closed[i+1]] for i in range(n)]
+    colors = np.linspace(0, 1, n)
+    lc = LineCollection(segments, cmap='viridis', linewidths=2.0)
+    lc.set_array(colors)
+    ax.add_collection(lc)
+    ax.scatter([p[0] for p in route], [p[1] for p in route], c=colors, cmap='viridis', s=16, zorder=3)
+    ax.scatter(route[0][0], route[0][1], s=90, color='#0f9d58', edgecolors='white', linewidth=1.2, zorder=5)
+    label_step = _visit_label_step(n)
+    for idx, p in enumerate(route):
+        if idx == 0 or idx == n - 1 or idx % label_step == 0:
+            ax.text(p[0], p[1], str(idx + 1), fontsize=7 if n > 120 else 8, color='#111111', ha='left', va='bottom', zorder=6,
+                    bbox=dict(boxstyle='round,pad=0.12', fc='white', ec='none', alpha=0.75))
+    arrow_step = max(1, label_step)
+    for idx in range(0, n, arrow_step):
+        a = route[idx]
+        b = route[(idx + 1) % n]
+        ax.annotate('', xy=b, xytext=a, arrowprops=dict(arrowstyle='->', color=plt.cm.viridis(colors[idx]), lw=1.0, alpha=0.7), zorder=4)
+    cbar = fig.colorbar(lc, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label('Progreso del recorrido')
+    ax.set_title(title, fontsize=14)
+    ax.set_xlabel('Coordenada X')
+    ax.set_ylabel('Coordenada Y')
+    ax.grid(True, alpha=0.2)
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_xlim(bounds[0], bounds[1])
+    ax.set_ylim(bounds[2], bounds[3])
+    _save_figure(fig, save_path)
+    return True
+
 def plot_gsph_fc(routes, conns, xmid, ymid, save_path=None):
-    if plt is None:
-        return
-    plt.figure(figsize=(10,10))
-    
-    all_points = []
-    for r in routes.values():
-        all_points.extend(r)
-    if all_points:
-        xs = [p[0] for p in all_points]
-        ys = [p[1] for p in all_points]
-        xmin, xmax = min(xs), max(xs)
-        ymin, ymax = min(ys), max(ys)
-        # Add some padding
-        padding = max((xmax-xmin), (ymax-ymin)) * 0.1
-        xmin -= padding; xmax += padding
-        ymin -= padding; ymax += padding
-    else:
-        xmin, xmax = xmid - 100, xmid + 100
-        ymin, ymax = ymid - 100, ymid + 100
-    
-
-    alpha = 0.08 
-    plt.fill_between([xmin, xmid], [ymid, ymid], [ymax, ymax], color='blue', alpha=alpha)
-    plt.fill_between([xmid, xmax], [ymid, ymid], [ymax, ymax], color='green', alpha=alpha)
-    plt.fill_between([xmin, xmid], [ymin, ymin], [ymid, ymid], color='red', alpha=alpha)
-    plt.fill_between([xmid, xmax], [ymin, ymin], [ymid, ymid], color='orange', alpha=alpha)
-    
-    fontsize = 14
-    plt.text(xmin + (xmid-xmin)/2, ymid + (ymax-ymid)/2, 'Q1 (NW)', 
-             ha='center', va='center', fontsize=fontsize, fontweight='bold', alpha=0.7)
-    plt.text(xmid + (xmax-xmid)/2, ymid + (ymax-ymid)/2, 'Q2 (NE)', 
-             ha='center', va='center', fontsize=fontsize, fontweight='bold', alpha=0.7)
-    plt.text(xmin + (xmid-xmin)/2, ymin + (ymid-ymin)/2, 'Q3 (SW)', 
-             ha='center', va='center', fontsize=fontsize, fontweight='bold', alpha=0.7)
-    plt.text(xmid + (xmax-xmid)/2, ymin + (ymid-ymin)/2, 'Q4 (SE)', 
-             ha='center', va='center', fontsize=fontsize, fontweight='bold', alpha=0.7)
-    
-    plt.axvline(xmid, linestyle='-', color='black', alpha=0.5, linewidth=1.5)
-    plt.axhline(ymid, linestyle='-', color='black', alpha=0.5, linewidth=1.5)
-    
-    colors = ['blue', 'green', 'red', 'orange']
-    for idx, (q, r) in enumerate(routes.items()):
-        if len(r) > 1:
-            x, y = zip(*r)
-            plt.plot(x, y, marker='o', color=colors[idx % len(colors)], 
-                     linewidth=2, markersize=4, label=q)
-            if q == 'QALL':
-                plt.plot([x[-1], x[0]], [y[-1], y[0]], 
-                         color=colors[idx % len(colors)], linewidth=2)
-        elif len(r) == 1:
-            plt.scatter(*r[0], color='black', marker='x')
-            
-    if conns:
-        for i, (a, b) in enumerate(conns):
-            plt.plot([a[0], b[0]], [a[1], b[1]], 
-                     linestyle='--', color='purple', linewidth=1.5, alpha=0.8)
-            plt.scatter([a[0], b[0]], [a[1], b[1]], color='purple', s=40, 
-                        marker='D', edgecolors='white', linewidth=1)
-            
-    plt.title("GSPH–FC (perfil rápido)", fontsize=16)
-    plt.xlabel("Coordenada X", fontsize=12)
-    plt.ylabel("Coordenada Y", fontsize=12)
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.grid(True, alpha=0.3); plt.axis('equal')
-    if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        plt.savefig(save_path, bbox_inches='tight')
-    plt.close()
-
-def _plot_with_title(routes, conns, xmid, ymid, save_path, title_suffix=""):
-    """Versión de plot_gsph_fc con título personalizado para múltiples runs."""
-    if plt is None:
-        return
-    plt.figure(figsize=(10,10))
-    
-    all_points = []
-    for r in routes.values():
-        all_points.extend(r)
-    if all_points:
-        xs = [p[0] for p in all_points]
-        ys = [p[1] for p in all_points]
-        xmin, xmax = min(xs), max(xs)
-        ymin, ymax = min(ys), max(ys)
-        padding = max((xmax-xmin), (ymax-ymin)) * 0.1
-        xmin -= padding; xmax += padding
-        ymin -= padding; ymax += padding
-    else:
-        xmin, xmax = xmid - 100, xmid + 100
-        ymin, ymax = ymid - 100, ymid + 100
-    
-    alpha = 0.08 
-    plt.fill_between([xmin, xmid], [ymid, ymid], [ymax, ymax], color='blue', alpha=alpha)
-    plt.fill_between([xmid, xmax], [ymid, ymid], [ymax, ymax], color='green', alpha=alpha)
-    plt.fill_between([xmin, xmid], [ymin, ymin], [ymid, ymid], color='red', alpha=alpha)
-    plt.fill_between([xmid, xmax], [ymin, ymin], [ymid, ymid], color='orange', alpha=alpha)
-    
-    fontsize = 14
-    plt.text(xmin + (xmid-xmin)/2, ymid + (ymax-ymid)/2, 'Q1 (NW)', 
-             ha='center', va='center', fontsize=fontsize, fontweight='bold', alpha=0.7)
-    plt.text(xmid + (xmax-xmid)/2, ymid + (ymax-ymid)/2, 'Q2 (NE)', 
-             ha='center', va='center', fontsize=fontsize, fontweight='bold', alpha=0.7)
-    plt.text(xmin + (xmid-xmin)/2, ymin + (ymid-ymin)/2, 'Q3 (SW)', 
-             ha='center', va='center', fontsize=fontsize, fontweight='bold', alpha=0.7)
-    plt.text(xmid + (xmax-xmid)/2, ymin + (ymid-ymin)/2, 'Q4 (SE)', 
-             ha='center', va='center', fontsize=fontsize, fontweight='bold', alpha=0.7)
-    
-    plt.axvline(xmid, linestyle='-', color='black', alpha=0.5, linewidth=1.5)
-    plt.axhline(ymid, linestyle='-', color='black', alpha=0.5, linewidth=1.5)
-    
-    colors = ['blue', 'green', 'red', 'orange']
-    for idx, (q, r) in enumerate(routes.items()):
-        if len(r) > 1:
-            x, y = zip(*r)
-            plt.plot(x, y, marker='o', color=colors[idx % len(colors)], 
-                     linewidth=2, markersize=4, label=q)
-            if q == 'QALL':
-                plt.plot([x[-1], x[0]], [y[-1], y[0]], 
-                         color=colors[idx % len(colors)], linewidth=2)
-        elif len(r) == 1:
-            plt.scatter(*r[0], color='black', marker='x')
-            
-    if conns:
-        for i, (a, b) in enumerate(conns):
-            plt.plot([a[0], b[0]], [a[1], b[1]], 
-                     linestyle='--', color='purple', linewidth=1.5, alpha=0.8)
-            plt.scatter([a[0], b[0]], [a[1], b[1]], color='purple', s=40, 
-                        marker='D', edgecolors='white', linewidth=1)
-    
-    title = f"GSPH–FC{title_suffix}"
-    plt.title(title, fontsize=14)
-    plt.xlabel("Coordenada X", fontsize=12)
-    plt.ylabel("Coordenada Y", fontsize=12)
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.grid(True, alpha=0.3); plt.axis('equal')
-    if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        plt.savefig(save_path, bbox_inches='tight')
-    plt.close()
+    route = routes.get('QALL', []) if isinstance(routes, dict) else list(routes)
+    return plot_quadrant_assembly(route, conns, xmid, ymid, save_path, 'GSPH-FC | Ensamblaje')
 
 def _create_comparison_plot(all_runs_data, inst_name, save_path, best_run_idx):
     """Genera un grid comparativo de todos los runs."""
@@ -942,11 +1204,11 @@ def _create_comparison_plot(all_runs_data, inst_name, save_path, best_run_idx):
         
         title = f"Run {run_idx+1}\nLength: {length:.1f}"
         if is_best:
-            title += " ⭐"
+            title += " BEST"
             ax.set_facecolor('#ffffcc')
         
         ax.set_title(title, fontsize=10, fontweight='bold' if is_best else 'normal')
-        ax.set_aspect('equal')
+        ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.3)
         ax.tick_params(labelsize=8)
     
@@ -957,14 +1219,57 @@ def _create_comparison_plot(all_runs_data, inst_name, save_path, best_run_idx):
     plt.savefig(save_path, bbox_inches='tight', dpi=100)
     plt.close()
 
+def _prepare_output_dirs(outdir):
+    plots_dir = os.path.join(outdir, 'graficos')
+    runs_dir = os.path.join(plots_dir, 'runs')
+    os.makedirs(plots_dir, exist_ok=True)
+    os.makedirs(runs_dir, exist_ok=True)
+
+    for dirpath in (plots_dir, runs_dir):
+        for name in os.listdir(dirpath):
+            path = os.path.join(dirpath, name)
+            if os.path.isfile(path):
+                os.remove(path)
+
+    diag_dir = os.path.join(outdir, 'diagnosticos')
+    if os.path.isdir(diag_dir):
+        for root, dirs, files in os.walk(diag_dir, topdown=False):
+            for name in files:
+                os.remove(os.path.join(root, name))
+            for name in dirs:
+                os.rmdir(os.path.join(root, name))
+        os.rmdir(diag_dir)
+
+    removable_files = {
+        'resultados.txt',
+        'resumen.txt',
+        'multiple_runs_stats.txt',
+        'estadisticas_runs.txt',
+        'resources.csv',
+        'resources.png',
+        'events.csv',
+        'events_timeline.png',
+        'pympler_summary.txt',
+        'tracemalloc_top.txt',
+        'error.txt',
+    }
+    for name in os.listdir(outdir):
+        path = os.path.join(outdir, name)
+        if not os.path.isfile(path):
+            continue
+        if name in removable_files or name.startswith('grafico_'):
+            os.remove(path)
+    return plots_dir, runs_dir
+
 if __name__ == "__main__":
     import csv
-    import threading
     import math
     try:
         import matplotlib.pyplot as _plt
     except Exception:
         _plt = None
+    if plt is None and _plt is not None:
+        plt = _plt
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
     instances_dir = os.path.abspath(BASE_DIR)
@@ -1025,27 +1330,11 @@ if __name__ == "__main__":
         writer = csv.writer(csvfile)
         writer.writerow(['instance', 'n_nodes', 'total_length', 'time_seconds', 'route_png', 'notes'])
 
-    resources_summary = []
-
-    def plot_resource_times(times, rss, cpu, outpath):
-        if not times: return
-        if _plt is None:
-            return
-        fig, ax1 = _plt.subplots(figsize=(8,4))
-        ax1.plot(times, [r/1024/1024 for r in rss], 'r-', label='RSS (MB)')
-        ax1.set_xlabel('time (s)')
-        ax1.set_ylabel('RSS (MB)', color='r')
-        ax2 = ax1.twinx()
-        ax2.plot(times, cpu, 'b--', label='CPU%')
-        ax2.set_ylabel('CPU %', color='b')
-        fig.tight_layout()
-        _plt.savefig(outpath, bbox_inches='tight')
-        _plt.close()
-
     for fname in files:
         inst_name = os.path.splitext(fname)[0]
         outdir = os.path.join(RESULTS_DIR, inst_name)
         os.makedirs(outdir, exist_ok=True)
+        plots_dir, runs_dir = _prepare_output_dirs(outdir)
         tsp_path = os.path.join(instances_dir, fname)
         try:
             nodes = read_tsplib(tsp_path)
@@ -1072,52 +1361,9 @@ if __name__ == "__main__":
                 print(f"  Run {run_idx + 1}/{num_runs}...", end="")
             
             t0 = time.time()
-            if profile_flag and run_idx == 0:  # Solo para la primera ejecución
-                event_enable(t0)
-            
-            sample_times = []
-            sample_rss = []
-            sample_cpu = []
-            stop_event = threading.Event()
-            proc = psutil.Process() if psutil else None
-
-            def monitor(interval=0.05):
-                while not stop_event.is_set():
-                    try:
-                        now = time.time() - t0
-                        rss = proc.memory_info().rss if proc else 0
-                        cpu = proc.cpu_percent(interval=None) if proc else 0
-                        sample_times.append(now)
-                        sample_rss.append(rss)
-                        sample_cpu.append(cpu)
-                    except Exception:
-                        pass
-                    time.sleep(interval)
-
-            mon_thread = None
-            if profile_flag and run_idx == 0 and psutil:  # Solo primera ejecución
-                mon_thread = threading.Thread(target=monitor, daemon=True)
-                mon_thread.start()
 
             try:
-                if profile_flag and run_idx == 0 and tracemalloc:  # Solo primera ejecución
-                    tracemalloc.start()
-                if profile_flag and run_idx == 0 and tracker:  # Solo primera ejecución
-                    mem_tracker = tracker.SummaryTracker()
-                
                 routes, conns, total_length, xm, ym = gsph_fc(nodes, MAX_ITER_LOCAL, EPS_FRONTIER)
-                
-                if profile_flag and run_idx == 0 and tracemalloc:
-                    snap = tracemalloc.take_snapshot()
-                    top = snap.statistics('lineno')[:10]
-                    with open(os.path.join(outdir, 'tracemalloc_top.txt'), 'w', encoding='utf-8') as tf:
-                        for stat in top:
-                            tf.write(str(stat) + '\n')
-                if profile_flag and run_idx == 0 and tracker:
-                    # record a pympler summary (approx)
-                    with open(os.path.join(outdir, 'pympler_summary.txt'), 'w', encoding='utf-8') as pf:
-                        for t in mem_tracker.format_diff():
-                            pf.write(str(t) + '\n')
             except Exception as e:
                 with open(os.path.join(outdir, 'error.txt'), 'w', encoding='utf-8') as ef:
                     ef.write(str(e))
@@ -1151,17 +1397,9 @@ if __name__ == "__main__":
                     'xm': xm,
                     'ym': ym,
                     'elapsed': elapsed,
-                    'sample_times': sample_times if run_idx == 0 else [],
-                    'sample_rss': sample_rss if run_idx == 0 else [],
-                    'sample_cpu': sample_cpu if run_idx == 0 else [],
                     'best_run_idx': run_idx,
-                    'sample_cpu': sample_cpu if run_idx == 0 else []
                 }
-            
-            if mon_thread:
-                stop_event.set()
-                mon_thread.join(timeout=1.0)
-                
+                 
             if num_runs > 1:
                 print(f" length={total_length:.2f}, time={elapsed:.3f}s")
         
@@ -1170,100 +1408,89 @@ if __name__ == "__main__":
             
         routes = best_result['routes']
         conns = best_result['conns'] 
-        totcompal_length = best_result['total_length']
+        best_total_length = best_result['total_length']
         xm = best_result['xm']
         ym = best_result['ym']
         elapsed = best_result['elapsed']
-        sample_times = best_result['sample_times']
-        sample_rss = best_result['sample_rss'] 
-        sample_cpu = best_result['sample_cpu']
         
-        if num_runs > 1:
+        if num_runs > 1 and plt is not None:
             best_run_idx = best_result.get('best_run_idx', 0)
             print(f"  Generando {len(all_runs_data)} gráficos...")
             for run_data in all_runs_data:
                 idx = run_data['run_idx']
                 is_best = (idx == best_run_idx)
-                suffix = "_MEJOR" if is_best else ""
-                png_name = f"grafico_{inst_name}_run_{idx+1:02d}{suffix}.png"
-                png_path_run = os.path.join(outdir, png_name)
-                
-                title_suffix = f" | Run {idx+1}/{num_runs} - Length: {run_data['total_length']:.2f}"
+                png_name = f"run_{idx+1:02d}{'_best' if is_best else ''}.png"
+                png_path_run = os.path.join(runs_dir, png_name)
+                title = f"{inst_name} | Run {idx+1}/{num_runs} | L={run_data['total_length']:.2f}"
                 if is_best:
-                    title_suffix += " MEJOR"
-                
-                _plot_with_title(run_data['routes'], run_data['conns'], 
-                                run_data['xm'], run_data['ym'], 
-                                png_path_run, title_suffix)
+                    title += " | MEJOR"
+                plot_final_route(run_data['routes'].get('QALL', []), png_path_run, title)
             
-            png_comparison = os.path.join(outdir, f"grafico_{inst_name}_comparison.png")
+            png_comparison = os.path.join(plots_dir, 'comparacion_runs.png')
             _create_comparison_plot(all_runs_data, inst_name, png_comparison, best_run_idx)
         
-        png_path = os.path.join(outdir, f"grafico_{inst_name}.png")
-        
-        if profile_flag and sample_times:
-            res_csv = os.path.join(outdir, 'resources.csv')
-            with open(res_csv, 'w', newline='', encoding='utf-8') as rc:
-                rwriter = csv.writer(rc)
-                rwriter.writerow(['time_s', 'rss_bytes', 'cpu_percent'])
-                for a,b,c in zip(sample_times, sample_rss, sample_cpu):
-                    rwriter.writerow([f"{a:.4f}", int(b), f"{c:.2f}"])
-            plot_resource_times(sample_times, sample_rss, sample_cpu, os.path.join(outdir, 'resources.png'))
-        peak_rss = max(sample_rss) if sample_rss else (proc.memory_info().rss if proc else 0)
+        route_plot_rel = ''
+        assembly_plot_rel = ''
+        order_plot_rel = ''
+        comparison_plot_rel = ''
 
-        res_txt = os.path.join(outdir, 'resultados.txt')
+        if plt is not None:
+            route_plot_rel = 'graficos/ruta_final.png'
+            assembly_plot_rel = 'graficos/ensamblaje_cuadrantes.png'
+            order_plot_rel = 'graficos/orden_visita.png'
+            plot_final_route(
+                routes.get('QALL', []),
+                os.path.join(outdir, route_plot_rel),
+                f'{inst_name} | Ruta final | L={best_total_length:.2f}',
+            )
+            plot_quadrant_assembly(
+                routes.get('QALL', []),
+                conns,
+                xm,
+                ym,
+                os.path.join(outdir, assembly_plot_rel),
+                f'{inst_name} | Cuadrantes y fronteras',
+            )
+            plot_visit_order(
+                routes.get('QALL', []),
+                os.path.join(outdir, order_plot_rel),
+                f'{inst_name} | Orden de visita',
+            )
+
+        res_txt = os.path.join(outdir, 'resumen.txt')
         with open(res_txt, 'w', encoding='utf-8') as f:
             f.write(f"Instancia: {fname}\n")
             f.write(f"N nodes: {len(nodes)}\n")
             if num_runs > 1:
                 f.write(f"Número de ejecuciones: {num_runs}\n")
-                f.write(f"MEJOR longitud de ruta: {total_length:.2f}\n")
+                f.write(f"MEJOR longitud de ruta: {best_total_length:.2f}\n")
                 f.write(f"Longitud promedio     : {sum(all_results)/len(all_results):.2f}\n")
                 f.write(f"Rango (min-max)       : {min(all_results):.2f} - {max(all_results):.2f}\n")
-                f.write(f"\n{'='*50}\n")
-                f.write(f"GRÁFICOS GENERADOS:\n")
-                f.write(f"{'='*50}\n")
-                best_run_idx = best_result.get('best_run_idx', 0)
-                for run_data in all_runs_data:
-                    idx = run_data['run_idx']
-                    is_best = (idx == best_run_idx)
-                    marker = "⭐ MEJOR" if is_best else ""
-                    f.write(f"  • grafico_{inst_name}_run_{idx+1:02d}{'_MEJOR' if is_best else ''}.png - Length: {run_data['total_length']:.2f} {marker}\n")
-                f.write(f"  • grafico_{inst_name}_MEJOR.png - Mejor resultado consolidado\n")
             else:
-                f.write(f"Longitud total de la ruta: {total_length:.2f}\n")
+                f.write(f"Longitud total de la ruta: {best_total_length:.2f}\n")
+            if plt is not None:
+                f.write(f"\n{'='*50}\n")
+                f.write("GRÁFICOS PRINCIPALES:\n")
+                f.write(f"{'='*50}\n")
+                f.write(f"  • {route_plot_rel} - Ruta final cerrada\n")
+                f.write(f"  • {assembly_plot_rel} - Cuadrantes, fronteras y elecciones\n")
+                f.write(f"  • {order_plot_rel} - Orden de visita de los nodos\n")
+                if num_runs > 1:
+                    comparison_plot_rel = 'graficos/comparacion_runs.png'
+                    f.write(f"  • {comparison_plot_rel} - Comparación visual de runs\n")
+                    best_run_idx = best_result.get('best_run_idx', 0)
+                    for run_data in all_runs_data:
+                        idx = run_data['run_idx']
+                        is_best = (idx == best_run_idx)
+                        marker = 'MEJOR' if is_best else ''
+                        f.write(f"  • graficos/runs/run_{idx+1:02d}{'_best' if is_best else ''}.png - Length: {run_data['total_length']:.2f} {marker}\n")
+            else:
+                f.write("\nGráficos no disponibles: matplotlib no está cargado.\n")
             f.write(f"Tiempo de ejecución      : {elapsed:.3f} segundos\n")
-            if profile_flag:
-                events_file = os.path.join(outdir, 'events.csv')
-                try:
-                    with open(events_file, 'w', newline='', encoding='utf-8') as ef:
-                        ew = csv.writer(ef)
-                        ew.writerow(['time_s','event'])
-                        for t,e in _events:
-                            ew.writerow([f"{t:.6f}", e])
-                    try:
-                        if _plt is None:
-                            raise RuntimeError("matplotlib unavailable")
-                        times = [t for t,_ in _events]
-                        fig, ax = _plt.subplots(figsize=(10, max(2, len(times)*0.15)))
-                        ax.hlines(1, 0, max(times) if times else 1, color='white')
-                        for i, (tt, ev) in enumerate(_events):
-                            ax.plot(tt, 1, marker='o')
-                            ax.text(tt, 1.02, ev, rotation=45, ha='left', va='bottom', fontsize=8)
-                        ax.set_yticks([])
-                        ax.set_xlabel('time (s)')
-                        _plt.tight_layout()
-                        _plt.savefig(os.path.join(outdir, 'events_timeline.png'), bbox_inches='tight')
-                        _plt.close()
-                    except Exception:
-                        pass
-                finally:
-                    event_disable()
-            f.write(f"Peak RSS (bytes)         : {int(peak_rss)}\n")
 
         notes = 'ok'
         if num_runs > 1:
-            stats_file = os.path.join(outdir, 'multiple_runs_stats.txt')
+            stats_file = os.path.join(outdir, 'estadisticas_runs.txt')
             with open(stats_file, 'w', encoding='utf-8') as sf:
                 sf.write(f"Estadísticas de {num_runs} ejecuciones:\n")
                 sf.write(f"Mejor longitud:     {min(all_results):.2f}\n")
@@ -1287,13 +1514,13 @@ if __name__ == "__main__":
             if num_runs > 1:
                 avg_length = sum(all_results)/len(all_results)
                 std_dev = math.sqrt(sum((x - avg_length)**2 for x in all_results) / (len(all_results) - 1)) if len(all_results) > 1 else 0
-                writer.writerow([inst_name, len(nodes), f"{total_length:.2f}", f"{elapsed:.3f}", png_path, f'{notes}|avg={avg_length:.2f}|std={std_dev:.2f}'])
+                writer.writerow([inst_name, len(nodes), f"{best_total_length:.2f}", f"{elapsed:.3f}", route_plot_rel, f'{notes}|avg={avg_length:.2f}|std={std_dev:.2f}'])
             else:
-                writer.writerow([inst_name, len(nodes), f"{total_length:.2f}", f"{elapsed:.3f}", png_path, notes])
+                writer.writerow([inst_name, len(nodes), f"{best_total_length:.2f}", f"{elapsed:.3f}", route_plot_rel, notes])
 
         if num_runs > 1:
-            print(f"Processed {inst_name}: nodes={len(nodes)}, BEST={total_length:.2f} (avg={sum(all_results)/len(all_results):.2f}), best_time={elapsed:.3f}s")
+            print(f"Processed {inst_name}: nodes={len(nodes)}, BEST={best_total_length:.2f} (avg={sum(all_results)/len(all_results):.2f}), best_time={elapsed:.3f}s")
         else:
-            print(f"Processed {inst_name}: nodes={len(nodes)}, length={total_length:.2f}, time={elapsed:.2f}s")
+            print(f"Processed {inst_name}: nodes={len(nodes)}, length={best_total_length:.2f}, time={elapsed:.2f}s")
 
     print('\nAll done. Summary written to', summary_path)

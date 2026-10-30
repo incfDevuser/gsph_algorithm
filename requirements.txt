@@ -5,3 +5,4 @@ psutil
 memory-profiler
 pympler
 pylint
+numba
