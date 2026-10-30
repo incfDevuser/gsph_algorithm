@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Research repo for **GSPH** (Geometric Split and Polish Heuristic), a 2D Euclidean TSP heuristic.
 Two halves: a Python experiment harness in `experiments/` and an LLNCS-class LaTeX paper at the root
-(`samplepaper.tex` is the current paper, `test.tex` an alternate draft, both cite `bibliografia.bib`).
+(`samplepaper_v2.tex` is the current paper, about GSPH_V2, and `samplepaper_v2_es.tex` its Spanish
+translation with the same tables — keep both in sync; `samplepaper.tex` is the previous version
+and `test.tex` an older draft; all cite `bibliografia.bib`).
 Code comments, output files and docs are in **Spanish**; keep new ones in Spanish. `AGENTS.md` holds
 the same operating notes for other agents; keep the two in sync when either changes.
 
@@ -93,8 +95,9 @@ light-polish budget. The strong polish is governed by `quality_time_budget`, `OR
 `random` is never seeded, so runs are not reproducible; `--profile` best-of-N relies on that variance.
 
 ## GSPH_V2 (`experiments/algorithms/GSPH_V2.py`)
-Faster, stronger rewrite of the same pipeline; `GSPH_BASE.py` is kept untouched so the paper's
-existing numbers stay reproducible. Same CLI and stdout format as BASE (so `run_all_and_latex.py`
+Faster, stronger rewrite of the same pipeline; `GSPH_BASE.py` is kept as the "previous
+implementation" of the paper and only received a crash fix (`double_bridge_tracked` indexed `perm[n]`
+when n is divisible by 4; runs that didn't crash are unchanged). Same CLI and stdout format as BASE (so `run_all_and_latex.py`
 parses it), but results go to `experiments/results/v2/`.
 - Works on node indices end to end (no coordinate-tuple round-trip), so duplicate coordinates are safe.
 - Kernels are `@njit(cache=True)` numba functions over numpy arrays: `_local_search` (queue-driven
@@ -140,10 +143,28 @@ BKS live in two places: the `BKS` dict in `run_all_and_latex.py` (used for GAPs)
   the benchmark tables.
 - `compare_runs.py` globs `graficos/runs/` for `run_*.png` / `*_run_*.png`; keep plot names aligned.
 
+## Paper revision experiments (`experiments/scripts/`)
+Each table added in the review of `samplepaper_v2.tex` has its own script (all take `--workers`, write
+long-format CSV + summary under `experiments/results/<dir>/`, and validate every tour):
+- `ablacion_construccion.py` → `ablacion/`: five constructions (random, NN, partition without
+  frontiers, FC with k=1, full GSPH-FC) followed by the same V2 polish; `gsph_fc_completo` replicates
+  `GSPH_V2.gsph_fc` exactly (same seed → same length) while logging seed/LS/final lengths.
+- `sensibilidad_parametros.py` → `sensibilidad/`: one-at-a-time changes to V2 module constants on the
+  6-instance tuning set (sets the globals inside each worker).
+- `comparar_lkh.py` → `lkh/`: LKH default vs same time as GSPH-FC. Uses an official LKH binary in
+  `experiments/data/lkh/` if present, else LKH-3.0.8 embedded in `elkai` via `_elkai.solve_problem`
+  (passes SEED/TIME_LIMIT). On Python 3.14 elkai only builds with
+  `PIP_CONSTRAINT` containing `scikit-build-core<0.10`.
+- `remedir_v1.py` → `v1_remedido/`: re-runs GSPH_BASE best-of-5; a partial run (30/37) confirmed the
+  paper's previous-implementation numbers (`v1_verificacion_parcial.csv`).
+- `tablas_revision.py`: turns those CSVs into LaTeX (`experiments/results/tablas_revision.tex`).
+Run experiments one at a time when timings matter; times taken with other jobs running are only
+comparable within the same table. `eil10`/`eil20` are subsets of eil51 (optima 159/243 by Held-Karp).
+
 ## Other files
 - `GSPH_V1.py`: old baseline kept for comparison; don't develop on it.
 - `verify_structure.py` lists some scripts that don't exist — aspirational, not authoritative.
 - `experiments/README.md` references `run_all_instances.py` and `aggregate_resources.py`, which do
   not exist, and an older output layout (`resultados.txt`, `grafico_*.png`).
-- The paper's figures point to `Resultados/*.png`, which is not in the repo; no LaTeX toolchain is
-  installed locally.
+- `samplepaper_v2.tex` takes its figures from `Resultados_v2/` (in the repo); the old
+  `samplepaper.tex` points to `Resultados/*.png`, which is not. No LaTeX toolchain is installed locally.

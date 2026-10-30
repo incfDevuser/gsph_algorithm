@@ -74,7 +74,12 @@ all instances up to 6{,}000 cities. Compared with our previous
 implementation on the 37 instances it reported, the average
 best GAP drops from 0.080\% to 0.000\% (all
 37 at the BKS) while the time per run falls from
-14.65~s to 0.23~s, roughly 65 times faster.
+14.65~s to 0.23~s, roughly 65 times faster. An ablation that keeps the
+search engine fixed shows that frontier connectivity yields the best
+seed tours (9.95\% above the BKS against 24.71\% for nearest neighbor)
+and the most BKS hits, but that most of the final quality is due to the
+localized ILS. LKH-3 remains more accurate, especially beyond 300
+cities.
 \keywords{2-opt \and Frontier connectivity \and Geometric decomposition
 \and Iterated local search \and TSPLIB benchmarks \and Traveling
 Salesman Problem}
@@ -122,9 +127,12 @@ and (iv) termination by stagnation rather than by wall-clock budget.
     with localized double-bridge kicks, Metropolis acceptance, and
     reversal-log undo, executed by compiled kernels over index arrays.
   \item \textbf{Extensive empirical evidence:} results on 77
-    TSPLIB instances up to 18{,}512 cities, an ablation of the
-    acceptance rule, and a direct comparison with the previous
-    implementation showing simultaneous gains in quality and speed.
+    TSPLIB instances up to 18{,}512 cities; an ablation that replaces the
+    construction while keeping the search engine fixed, to separate the
+    contribution of frontier connectivity from that of the ILS; a
+    one-at-a-time parameter sensitivity study; a comparison with LKH-3;
+    and a comparison with the previous implementation showing
+    simultaneous gains in quality and speed.
 \end{enumerate}
 
 The remainder is organized as follows. Section~\ref{sec:related}
@@ -167,6 +175,24 @@ annealing~\cite{kirkpatrick1983optimization}. GSPH-FC follows this line,
 but adds an explicit geometric decomposition layer and makes frontier
 connectivity part of the local route construction itself.
 
+Geometric decomposition itself also has a long history. Karp's
+partitioning algorithm splits the plane recursively into cells, solves
+each cell, and patches the subtours together, with probabilistic
+performance guarantees for uniform points~\cite{karp1977probabilistic}.
+Space-filling-curve heuristics visit the points in the order of a
+recursive quadrant curve in $O(n\log n)$
+time~\cite{bartholdi1982spacefilling}. POPMUSIC decomposes an existing
+tour into overlapping subproblems that are re-optimized
+independently, and uses this to build candidate sets for
+LKH~\cite{taillard2019popmusic}. In all
+of these, the connections between regions are a by-product: they result
+from patching or from the order of a curve, or are inherited from a
+previous tour. GSPH-FC differs in that the connections between adjacent
+quadrants are chosen explicitly, before the local routes exist, and are
+then imposed as fixed endpoints of those routes.
+Section~\ref{sec:ablation} measures how much this choice contributes
+once a strong improvement engine is applied.
+
 Our claim is therefore not that NN, 2-opt, Or-opt, or ILS are novel in
 isolation. Rather, the contribution lies in the way geometric
 partitioning, frontier-guided anchoring, and an efficient localized ILS
@@ -186,8 +212,9 @@ Nearest Neighbour   & Constructive  & $O(n^2)$     & High      & Low \\
 2-opt               & Improvement   & $O(n^2)$/iter& Medium    & Medium \\
 Lin--Kernighan/LKH  & Improvement   & Variable     & High      & Very high \\
 ILS-based heuristics& Metaheuristic & Variable     & High      & High \\
-\textbf{GSPH-FC}   & Geometric heuristic & $O(n^2)$ & High & High \\
+\textbf{GSPH-FC}   & Geometric heuristic & $O(n^2)+O(K\cdot\text{iter})^{*}$ & High & High \\
 \bottomrule
+\multicolumn{5}{@{}l}{\scriptsize $^{*}$Construction plus $K$ ILS iterations; see Section~\ref{sec:complexity}.}
 \end{tabular}
 \end{table}
 
@@ -377,6 +404,18 @@ modifications share one primitive. The total gain is returned, which
 lets the ILS track the tour length incrementally instead of recomputing
 it.
 
+\paragraph{Why four quadrants.} A closed tour crosses any line through
+the point set an even number of times, and at least twice. Visiting the
+four quadrants in the cyclic order $Q_1\!\to\!Q_2\!\to\!Q_4\!\to\!Q_3$
+makes the assembled tour cross each cutting line exactly twice, which
+is the minimum, and each frontier exactly once. Finer grids would
+require choosing an order of the cells, which is itself a routing
+problem (as in space-filling curves~\cite{bartholdi1982spacefilling})
+and would multiply the number of frontiers to connect. We therefore keep
+one level of four quadrants and obtain diversity from the partition
+portfolio and the frontier combinations instead. The remaining
+parameters are examined in Section~\ref{sec:sensitivity}.
+
 \paragraph{Parameters.}
 Candidate lists are the union of the $k$ nearest neighbors ($k=25$, or
 $k=40$ for $n>250$) and the Delaunay neighbors, truncated to
@@ -399,16 +438,61 @@ node reaches the top of the selection; this lazy evaluation reduced the
 construction time on \texttt{rl11849} from 47~s to 9.6~s. Seeds are
 explicit, so every run is reproducible.
 
-\subsection{Complexity}
+\paragraph{Code and protocol availability.} The solver, the benchmark
+scripts that produce every table (one script per experiment: main
+benchmark, construction ablation, parameter sensitivity, previous
+implementation, and comparison with LKH), the per-run CSV files, the
+BKS file, and the exact seeds will be released in a public repository
+upon acceptance; it is withheld here for blind review. Each table
+records the script and seed range that generated it, and every reported
+tour is validated as a permutation and its length recomputed from the
+coordinates.
 
-The geometric partition is $O(n)$, candidate lists cost
-$O(n\log n)$, and the distance matrix needs $O(n^2)$ time and memory.
-Anchored construction is quadratic in the quadrant size. One ILS
-iteration costs $O(W(n))$ for the perturbation plus the length of the
-reversals performed by the local search, at most $n/2$ each, which in
-practice are short because perturbations are local. Undoing a rejected
-kick costs the same as performing it, so no $O(n)$ copy is needed per
-iteration.
+\subsection{Complexity}
+\label{sec:complexity}
+
+We separate the cost of the construction, the cost of one ILS
+iteration, the total cost, which depends on the stopping rule, and the
+memory footprint. Let $c$ be the candidate-list length ($c\le 40$),
+$K$ the number of ILS kicks performed, and $m_k=|Q_k|$.
+
+\paragraph{Construction.} The distance matrix takes $\Theta(n^2)$ time.
+Candidate lists take $O(n\log n)$ (a $k$-d tree for the $k$ nearest
+neighbors and a Delaunay triangulation). Each partition is $O(n)$, and
+each frontier selection is quadratic only in the size of the frontier
+bands. For each of the at most $5\times5$ (partition, frontier
+combination) pairs, the anchored paths cost $O(\sum_k m_k^2)\subseteq
+O(n^2)$ for cheapest insertion, plus a bounded number of open-path 2-opt
+sweeps of $O(m_k^2)$ each. The construction is therefore $O(n^2)$ and is
+dominated by the distance matrix for large $n$.
+
+\paragraph{One ILS iteration.} The double-bridge costs $O(W(n))$.
+\textsc{LocalSearch} examines $O(c)$ candidates per processed node,
+with a constant factor of six for the Or-opt variants, and starts from
+the eight endpoints of the kick. Each applied move costs one or more
+reversals of length at most $n/2$. One iteration thus costs
+$O(W(n)+q\,c+r)$, where $q$ is the number of nodes processed and $r$
+the total length reversed. Both are small in practice because the
+perturbation is local. In the worst case one move costs $O(n)$. Undoing
+a rejected kick replays the logged reversals, so no $O(n)$ copy is made.
+
+\paragraph{Total.} The search stops after $S(n)=\max(5000,300n)$
+consecutive kicks without improving $\pi^*$, or at $T_{\max}$. Hence
+$K\ge S(n)$, and $K$ is not bounded a priori by a polynomial in $n$
+unless $T_{\max}$ applies. The total time is
+$O(n^2+K\,(W(n)+\bar q\,c+\bar r))$, with $\bar q,\bar r$ the averages
+per iteration. Empirically, over the 66 instances with
+$100\le n\le 6{,}000$, a log--log fit gives $K\propto n^{1.05}$
+(about $600n$--$850n$ kicks), a cost per kick growing as $n^{0.31}$
+(from about 2~$\mu$s for $n\le 300$ to 6~$\mu$s for $n>2{,}000$), and a
+time per run growing as $n^{1.36}$.
+
+\paragraph{Memory.} The dense matrix of 32-bit integers takes $4n^2$
+bytes. Candidate lists take $O(nc)$, and the tour, position, and
+queue arrays and the reversal log take $O(n)$. For $n=18{,}512$ the
+matrix alone takes about 1.28~GiB. This is manageable on the test
+machine but is the main barrier to larger instances (see
+Section~\ref{sec:analysis}).
 
 % ================================================================
 \section{Experimental Results}
@@ -422,30 +506,46 @@ macOS~26.6.2, with Python~3.14.0, NumPy~2.5.1, and Numba~0.68.1. The
 solver is single-threaded. For reference, this processor scores
 37{,}937 in the PassMark CPU Mark and 4{,}544 in the PassMark
 single-thread rating~\cite{passmark_m4pro}; the latter is the relevant
-figure for a single-threaded code. We use all 74 instances of
-our TSPLIB benchmark set with $n\le 6{,}000$ and the 6
-\texttt{EUC\_2D} instances of an extended set with $2{,}103\le n\le
-18{,}512$. Each instance of the main set is solved 10 times (seeds
-1000--1009) and each instance of the extended set 3 times (marked
-$^{\dagger}$). We report the best tour, the GAP of the best tour, the
-average GAP over all runs, and the average time per run, with
+figure for a single-threaded code.
+
+\paragraph{Instances.} The main benchmark set has 74 files with
+$n\le 6{,}000$. Three of them are left out of all counts and averages.
+\texttt{eil10} and \texttt{eil20} are not TSPLIB instances: they are the
+first 10 and 20 cities of \texttt{eil51} and have no published BKS. We
+certified their optima (159 and 243) with the Held--Karp dynamic
+program, and GSPH-FC returns both in every run. \texttt{linhp318} is
+excluded because its BKS (41{,}345) refers to a variant with a fixed
+edge, whereas our solver returns 42{,}029, the optimum of
+\texttt{lin318} on the same coordinates. To these 71 TSPLIB instances we
+add the 6 \texttt{EUC\_2D} instances of an extended set with
+$2{,}103\le n\le 18{,}512$ (marked $^{\dagger}$), which gives the
+$71+6=77$ instances used in every count and average below. The
+non-Euclidean files of the extended set (\texttt{pla*}, \texttt{CEIL\_2D})
+are not used.
+
+\paragraph{Protocol.} Each instance of the main set is solved 10 times
+(seeds 1000--1009) and each instance of the extended set 3 times. We
+report the best tour, the GAP of the best tour, the average GAP over all
+runs, and the average time per run, with
 GAP$(\%)=100\times(L-\text{BKS})/\text{BKS}$. Bold GAP values denote an
-exact BKS match. \texttt{eil10} and \texttt{eil20} have no agreed BKS
-(N/A). \texttt{linhp318} is excluded: its BKS (41{,}345) refers to a
-variant with a fixed edge, whereas our solver returns 42{,}029, the
-optimum of \texttt{lin318} on the same coordinates.
+exact BKS match. For every TSPLIB instance used here the BKS is a proven
+optimum~\cite{reinelt1991tsplib,applegate2006tsp}. Matching it certifies
+that the tour returned in that run is optimal; it is not a guarantee of
+the algorithm, which, like any heuristic, offers none.
 
 \begin{table}
 \caption{Small instances ($n\le 120$), 10 runs. Bold GAP indicates an
-exact BKS match.}
+exact BKS match. $^{\ddagger}$Subsets of \texttt{eil51}, not TSPLIB
+instances; the reference value is the optimum certified by Held--Karp,
+and these rows are excluded from the average.}
 \label{tab:small}
 \centering\scriptsize
 \begin{tabular}{@{}lrrrrrr@{}}
 \toprule
 \textbf{Instance} & $n$ & \textbf{BKS} & \textbf{Best} & \textbf{GAP best (\%)} & \textbf{GAP avg (\%)} & \textbf{Time (s)}\\
 \midrule
-eil10 & 10 & --- & 159 & N/A & N/A & 0.01 \\
-eil20 & 20 & --- & 243 & N/A & N/A & 0.01 \\
+eil10$^{\ddagger}$ & 10 & 159 & 159 & \textbf{0.000} & 0.000 & 0.01 \\
+eil20$^{\ddagger}$ & 20 & 243 & 243 & \textbf{0.000} & 0.000 & 0.01 \\
 eil51 & 51 & 426 & 426 & \textbf{0.000} & 0.000 & 0.06 \\
 berlin52 & 52 & 7{,}542 & 7{,}542 & \textbf{0.000} & 0.000 & 0.06 \\
 st70 & 70 & 675 & 675 & \textbf{0.000} & 0.000 & 0.08 \\
@@ -622,7 +722,14 @@ larger than its best GAP. On the 5 instances with more than 6{,}000 cities the b
 
 Table~\ref{tab:cmp} compares the current solver with the previous
 implementation of GSPH-FC on the 37 instances for which that
-implementation reported results (best of 5 runs, time per run). The
+implementation reported results (best of 5 runs, time per run). Both
+implementations were run on the same machine and software stack
+described above. To check that the earlier figures are representative,
+we re-ran the previous implementation on 30 of the 37 instances. The
+time per run was reproduced, as expected, since it is essentially the
+fixed polishing budget (5--30~s depending on $n$). The best tour was
+identical on 26 instances and differed slightly, in both directions, on
+the other four, because the previous implementation is not seeded. The
 table lists the instances where the previous solver did not reach the
 BKS; on the other 22 both reach it and the current
 solver is between one and two orders of magnitude faster.
@@ -670,7 +777,95 @@ and it polished two finalists with a full budget each. With
 stagnation-based termination the time per run now reflects
 convergence rather than a preset budget.
 
-\subsection{Ablation of the Search Components}
+\subsection{Ablation of the Construction}
+\label{sec:ablation}
+
+To separate the contribution of the geometric construction from that of
+the improvement engine, we replace the construction and keep everything
+else fixed. Each variant is followed by exactly the same local search
+and ILS, with the same candidate lists, temperature, window, stopping
+rule, and seeds:
+\begin{itemize}
+  \item \textbf{Random + ILS}: a random permutation, a floor with no
+    construction information at all;
+  \item \textbf{Nearest Neighbor + ILS}: the classical constructive
+    baseline, started at the first city;
+  \item \textbf{Partition (no FC) + ILS}: the bounding-box quadrants,
+    each solved as a free open path (nearest neighbor plus 2-opt) and
+    concatenated in the order $Q_1\!\to\!Q_2\!\to\!Q_4\!\to\!Q_3$, with
+    each path oriented to join the previous one; no frontier pairs are
+    chosen;
+  \item \textbf{Frontier Connectivity + ILS}: the same quadrants, with the
+    best pair of each frontier used as the anchors of the anchored paths;
+    a single partition and a single frontier combination;
+  \item \textbf{GSPH-FC (complete)}: partition portfolio, top-3 pairs per
+    frontier, combinations, and funnel, as in the rest of the paper.
+\end{itemize}
+For each run we record the GAP of the seed tour, the GAP after the first
+local optimum (\emph{LS}), the final GAP after the ILS, and the total
+time.
+
+\begin{table}
+\caption{Construction ablation on the 63 TSPLIB instances with
+$n\le 2{,}000$ (5 runs each, seeds 1000--1004, 315 runs per variant).
+Every variant is followed by the same local search and ILS. GAP values
+(\%) are averages over instances: of the seed tour, of the first local
+optimum (LS), of the best of the five final tours, and of all final
+tours. Hits are final tours at the BKS. Times were measured while other
+experiments shared the machine and are comparable only within the
+table.}
+\label{tab:ablation-constr}
+\centering\scriptsize
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+\textbf{Construction} & \textbf{GAP seed} & \textbf{GAP LS} & \textbf{GAP best} & \textbf{GAP avg} & \textbf{Hits} & \textbf{Time (s)}\\
+\midrule
+Random + ILS                 & 1815.62 & 6.17 & 0.037 & 0.117 & 165/315 & 1.31 \\
+Nearest Neighbor + ILS       &   24.71 & 4.43 & 0.074 & 0.140 & 168/315 & 1.29 \\
+Partition (no FC) + ILS      &   23.50 & 5.44 & 0.040 & 0.101 & 170/315 & 1.27 \\
+Frontier Connectivity + ILS  &   13.84 & 6.27 & 0.038 & 0.096 & 172/315 & 1.36 \\
+\textbf{GSPH-FC (complete)}  & \textbf{9.95} & \textbf{4.37} & \textbf{0.034} & \textbf{0.080} & \textbf{190/315} & 1.38 \\
+\midrule
+& \multicolumn{2}{c}{$n\le 300$ (36)} & \multicolumn{2}{c}{$301\le n\le 800$ (12)} & \multicolumn{2}{c}{$801\le n\le 2{,}000$ (15)}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+& \textbf{GAP avg} & \textbf{Hits} & \textbf{GAP avg} & \textbf{Hits} & \textbf{GAP avg} & \textbf{Hits}\\
+\midrule
+Random + ILS                 & 0.030 & 152/180 & 0.106 & 11/60 & 0.333 & 2/75 \\
+Nearest Neighbor + ILS       & 0.026 & 161/180 & 0.271 &  7/60 & 0.309 & 0/75 \\
+Partition (no FC) + ILS      & 0.046 & 152/180 & 0.083 & 13/60 & \textbf{0.249} & 5/75 \\
+Frontier Connectivity + ILS  & 0.021 & 160/180 & 0.079 & 11/60 & 0.289 & 1/75 \\
+\textbf{GSPH-FC (complete)}  & \textbf{0.000} & \textbf{174/180} & \textbf{0.078} & \textbf{15/60} & 0.274 & 1/75 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:ablation-constr} answers the question in two parts.
+First, the construction clearly improves the starting point. The
+complete GSPH-FC seed is 9.95\% above the BKS, against 24.71\% for
+nearest neighbor and 23.50\% for the partition without frontier pairs.
+Choosing frontier pairs alone already lowers the seed GAP to 13.84\%,
+and the portfolio with frontier combinations brings it under 10\%.
+Second, the ILS closes most of the remaining gap whatever the starting
+point. Even random tours end at an average GAP of 0.117\%. Over all 63
+instances the complete method ranks first, with an average GAP of
+0.080\% against 0.096--0.140\% and 190 BKS hits against 165--172, at the
+same total time (about 1.3~s). The differences are small, however.
+Comparing per-instance average GAPs with a Wilcoxon signed-rank test,
+the complete method is significantly better than the random start
+($p=0.029$, 37 non-tied instances) but not significantly better than
+nearest neighbor ($p=0.11$), the partition without frontier pairs
+($p=0.46$), or frontier connectivity with a single combination
+($p=0.51$). The breakdown by size also needs care. For $n\le 300$ the
+complete method reaches the BKS in 174 of 180 runs, but there it may
+polish two finalists and spends about twice the time of the other
+variants (0.22~s against 0.12~s). For $801\le n\le 2{,}000$ the
+partition without frontier pairs has the lowest average GAP. Taken
+together, frontier connectivity is a reliable way to obtain good seeds
+and consistent results, but most of the final solution quality is due
+to the localized ILS. We state this explicitly because it shapes how the
+contribution should be read (Section~\ref{sec:analysis}).
+
+\subsection{Ablation of the Search Engine}
 
 Table~\ref{tab:ablation} isolates the acceptance rule on six instances
 chosen for their difficulty (5 runs each, same seeds). With $T=0$ the
@@ -705,6 +900,119 @@ d1655   & 1655 & 0.325 & 0.653 & 4.50 & 0.034 & 0.499 & 5.26 \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection{Parameter Sensitivity}
+\label{sec:sensitivity}
+
+Table~\ref{tab:sensitivity} varies one parameter at a time around its
+default value on the six-instance tuning subset (5 runs, seeds
+1000--1004). The parameters are the number of pairs kept per frontier,
+the partition portfolio (all candidates or only the bounding-box
+midpoint), the acceptance temperature, the divisor of the perturbation
+window, and the stall factor.
+
+\begin{table}
+\caption{One-at-a-time parameter sensitivity on the tuning subset
+(\texttt{kroE100}, \texttt{lin318}, \texttt{pcb442}, \texttt{rat783},
+\texttt{pr1002}, \texttt{d1655}; 5 runs, seeds 1000--1004). GAP values
+are averaged over the six instances; hits are runs at the BKS. Times
+were measured while other experiments shared the machine and are only
+comparable within the table.}
+\label{tab:sensitivity}
+\centering\scriptsize
+\begin{tabular}{@{}llrrrr@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{GAP best} & \textbf{GAP avg} & \textbf{Hits} & \textbf{Time (s)}\\
+\midrule
+\multicolumn{2}{@{}l}{\textit{Default} ($k{=}3$, portfolio, $T{=}0.2\bar d$, $n/8$, $300n$)} & 0.064 & 0.176 & 10/30 & 2.15 \\
+\midrule
+Pairs per frontier $k$ & 1 & 0.069 & 0.196 & 10/30 & 2.19 \\
+                       & 5 & 0.064 & 0.176 & 10/30 & 2.29 \\
+Partition portfolio    & bbox only & 0.059 & 0.141 & 7/30 & 2.11 \\
+Temperature $T/\bar d$ & 0   & 0.175 & 0.311 & 7/30 & 1.77 \\
+                       & 0.1 & 0.052 & 0.242 & 7/30 & 2.24 \\
+                       & 0.4 & 0.069 & 0.199 & 6/30 & 2.08 \\
+Window divisor ($n/\cdot$) & 4  & 0.126 & 0.193 & 13/30 & 3.52 \\
+                       & 16 & 0.139 & 0.268 & 8/30 & 2.21 \\
+Stall factor ($\cdot\,n$) & 100  & 0.092 & 0.256 & 4/30 & 0.94 \\
+                       & 1000 & 0.039 & 0.141 & 13/30 & 5.78 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three pairs per frontier are enough: keeping a single pair raises the
+average GAP from 0.176\% to 0.196\%, and five pairs give exactly the
+same tours as three. The reason is that only the three to five
+best-ranked combinations are assembled, and they rarely use a fourth or
+fifth pair. The acceptance temperature matters, but its exact value
+does not: $T=0$ nearly doubles the average GAP, while $T/\bar d\in
+\{0.1,0.2,0.4\}$ stay within 0.07 points of each other and $0.2$ has the
+lowest average. The window divisor $n/8$ is a compromise. $n/16$ is
+clearly worse, and $n/4$ reaches the BKS more often but costs about 60\%
+more time. The stall factor trades time for quality almost
+monotonically: $100n$ runs more than twice as fast with a higher
+average GAP, and $1000n$ improves the average GAP to 0.141\% at about
+2.7 times the cost. The default $300n$ is a middle point, and users can
+move along this curve with a single parameter. Finally, on these six
+instances the partition portfolio gives no clear benefit over the
+bounding-box partition alone: the average GAP is lower without it, but
+fewer runs reach the BKS. With five runs, these differences are within
+run-to-run variation.
+
+\subsection{Comparison with LKH}
+\label{sec:lkh}
+
+LKH~\cite{helsgaun2000effective,helsgaun2017extension} is the reference
+heuristic for the symmetric TSP. We ran LKH-3 (version 3.0.8, through the
+\texttt{elkai} Python binding, which embeds the original C code) on the
+same instances and seeds in two settings. In the first, LKH uses its
+default parameters with one run of $n$ trials per seed. In the second,
+its time limit equals the average GSPH-FC time per run on that instance.
+LKH does not count its preprocessing (subgradient ascent for the
+$\alpha$-nearness candidates) towards that limit, so we report the total
+wall-clock time. Every LKH tour was validated and its length recomputed
+under \texttt{EUC\_2D}.
+
+\begin{table}
+\caption{GSPH-FC versus LKH-3 on the 63 TSPLIB instances with
+$n\le 2{,}000$. GSPH-FC: 10 runs per instance
+(Tables~\ref{tab:small}--\ref{tab:large}). LKH: 3 runs per instance
+(seeds 1000--1002), with default parameters and with a time limit equal
+to the average GSPH-FC time. GAP avg (\%) and time (s) are averages over
+instances; hits are runs at the BKS.}
+\label{tab:lkh}
+\centering\scriptsize
+\begin{tabular}{@{}lrrrrrrrrr@{}}
+\toprule
+& \multicolumn{3}{c}{\textbf{GSPH-FC}} & \multicolumn{3}{c}{\textbf{LKH default}} & \multicolumn{3}{c}{\textbf{LKH, same time}}\\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}
+\textbf{Range} & \textbf{GAP} & \textbf{Hits} & \textbf{Time} & \textbf{GAP} & \textbf{Hits} & \textbf{Time} & \textbf{GAP} & \textbf{Hits} & \textbf{Time}\\
+\midrule
+$n\le 300$ (36)           & 0.001 & 342/360 & 0.22 & 0.001 & 105/108 &  0.12 & 0.001 & 105/108 & 0.10 \\
+$301\le n\le 800$ (12)    & 0.081 &  25/120 & 0.82 & 0.010 &  31/36  &  2.06 & 0.010 &  30/36  & 0.88 \\
+$801\le n\le 2{,}000$ (15)& 0.301 &   1/150 & 3.63 & 0.041 &  21/45  & 14.55 & 0.073 &  16/45  & 4.52 \\
+\midrule
+\textit{All} (63)         & 0.088 & 368/630 & 1.14 & 0.012 & 157/189 &  3.93 & 0.020 & 151/189 & 1.30 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:lkh} shows that LKH is the stronger heuristic, as
+expected from a mature solver built on $\alpha$-nearness candidates and
+5-opt sequential moves. For $n\le 300$ both methods reach the BKS in
+almost every run, and LKH needs about half the time. In the
+intermediate range LKH reaches an average GAP of 0.010\% against 0.081\%
+for GSPH-FC, both with its default settings (2.5 times slower than
+GSPH-FC) and when limited to the GSPH-FC time. For $801\le n\le 2{,}000$ the
+difference grows: 0.041\% for LKH with its default settings, which take
+four times longer, 0.073\% at the same time, and 0.301\% for GSPH-FC.
+Over the 63 instances, GSPH-FC has a lower average GAP than LKH on only
+three of them (\texttt{ch150}, \texttt{lin318}, and \texttt{fl1577} at
+equal time), ties on 29, and is worse on the rest. GSPH-FC does not
+compete with LKH on solution quality. Its case rests on other grounds:
+a construction that can be read and drawn, a short Python code base with
+compiled kernels, a single parameter ($S(n)$) to trade time for quality,
+and results within a few tenths of a percent of the optimum in seconds.
 
 Figures~\ref{fig:lin318-route}--\ref{fig:pcb442-quad} give qualitative
 views of the solver: an optimal tour on \texttt{lin318}, a 100-city
@@ -747,15 +1055,29 @@ with the four selected frontier pairs.}
 \label{sec:analysis}
 % ================================================================
 
-The results show that the geometric construction and the improvement
-engine play complementary roles. The frontier-guided construction
-provides structured, low-crossing seed tours, while the localized ILS
-closes the remaining gap. Because perturbations are local and every
-move is a logged reversal, an iteration costs microseconds, which is
-what allows the solver to reach the BKS on all instances up to 300
-cities in well under a second.
+The ablation of Section~\ref{sec:ablation} makes the roles of the two
+stages precise. The frontier-guided construction produces the best seed
+tours: 9.95\% above the BKS against 24.71\% for nearest neighbor and
+23.50\% for a partition without frontier pairs. It also yields the most
+BKS hits and the lowest average GAP after the ILS. The improvement
+engine, however, accounts for most of the final quality. Even random
+tours end within 0.12\% of the BKS on average, and the differences
+between constructions after the ILS are not statistically significant,
+except against the random start. The honest reading is therefore that
+GSPH-FC is a geometric construction that makes the search more reliable,
+coupled with an efficient localized ILS that does most of the work.
+Because perturbations are local and every move is a logged reversal, an
+iteration costs microseconds, which is what allows the solver to reach
+the BKS on all instances up to 300 cities in well under a second.
 
-Three limitations remain. First, beyond roughly 10{,}000 cities the
+Against LKH (Section~\ref{sec:lkh}), GSPH-FC is competitive only on
+small instances. Beyond 300 cities LKH is more accurate even at equal
+time, which reflects the much stronger variable-depth moves of
+Lin--Kernighan-type search. We see GSPH-FC as a transparent and
+lightweight alternative with a clear time/quality knob rather than a
+replacement for LKH.
+
+Four limitations remain. First, beyond roughly 10{,}000 cities the
 array representation makes each 2-opt reversal $O(n)$, the runs reach
 the 60~s cap before stagnation, and the dense distance matrix
 ($4n^2$ bytes) becomes the memory bottleneck. Second, strongly
@@ -764,7 +1086,11 @@ between runs, suggesting that perturbations crossing clusters are
 under-represented. Third, axis-aligned partitioning may be suboptimal
 for elongated or diagonally clustered instances, and the method is
 metric-specific: historical BKS values under a different convention,
-as with \texttt{linhp318}, must be handled with care.
+as with \texttt{linhp318}, must be handled with care. Fourth, the
+parameters were tuned on six instances, and the ablation and the LKH
+comparison cover instances up to 2{,}000 cities with 3--5 runs each;
+larger studies would sharpen the small differences between
+constructions.
 
 Promising next steps include a variable-depth (Or-3opt or
 Lin--Kernighan style) move inside the same reversal framework,
@@ -786,9 +1112,16 @@ kernels. On 77 TSPLIB instances the solver reaches the BKS on
 stays within 0.60\% of the BKS up to 6{,}000 cities.
 Against the previous implementation it improves solution quality and
 speed at the same time: all 37 comparable instances now
-reach the BKS, about 65 times faster. Future work will
-focus on variable-depth moves and on data structures that extend the
-same performance to instances with tens of thousands of cities.
+reach the BKS, about 65 times faster. A construction ablation shows that
+frontier connectivity provides the best seeds and the most consistent
+results, while the localized ILS accounts for most of the final quality.
+A sensitivity study supports the chosen parameters, and a comparison
+with LKH-3 places GSPH-FC as a lightweight, interpretable alternative
+that matches LKH on small instances but not beyond 300 cities. Future
+work will focus on variable-depth moves within the same reversal
+framework, on data structures that extend the method to instances with
+tens of thousands of cities, and on asymmetric costs from real road
+networks.
 
 % BLIND REVIEW: acknowledgements hidden
 %

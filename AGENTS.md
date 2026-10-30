@@ -2,7 +2,9 @@
 
 Research repo for the **GSPH** (Geometric Split and Polish Heuristic) TSP algorithm.
 Two parts: Python experiment harness under `experiments/`, and a LaTeX paper at the root
-(`samplepaper.tex`, `test.tex`, `bibliografia.bib`). Code comments and docs are in Spanish.
+(`samplepaper_v2.tex` is the current paper and `samplepaper_v2_es.tex` its Spanish translation, kept in
+sync; `samplepaper.tex` and `test.tex` are older versions;
+all cite `bibliografia.bib`). Code comments and docs are in Spanish.
 
 ## Setup
 - Python **3.11.5** (`.python-version`). Use the repo venv:
@@ -51,7 +53,10 @@ repo venv (`.venv/bin/python`), the system `python3` here lacks it.
   stagnation (`GSPH_STALL`, `GSPH_TIME_CAP`, `GSPH_SEED`, `GSPH_TEMP` for worse-move acceptance).
   Moves are logged reversals so rejected kicks are undone without copying the tour. Same CLI/stdout
   as BASE; results go to `experiments/results/v2/`. Falls back to plain Python without numba. BASE
-  stays untouched so the paper's numbers remain reproducible.
+  is the paper's "previous implementation" and only received a crash fix in `double_bridge_tracked`.
+- Paper revision scripts in `experiments/scripts/`: `ablacion_construccion.py` (construction ablation),
+  `sensibilidad_parametros.py`, `comparar_lkh.py` (LKH binary in `experiments/data/lkh/` or LKH-3 via
+  `elkai`), `remedir_v1.py`, and `tablas_revision.py` (CSV → LaTeX). Details in CLAUDE.md.
 - `experiments/scripts/benchmark_v2.py` — fast in-process V2 benchmark (no plots) over `standard/` +
   EUC_2D `large/` instances; writes `experiments/results/v2/benchmark_v2.csv`.
 - `experiments/algorithms/GSPH_V1.py` — older baseline; keep for comparison, don't develop on it.

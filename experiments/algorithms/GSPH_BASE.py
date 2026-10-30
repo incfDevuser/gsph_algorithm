@@ -607,9 +607,10 @@ def double_bridge_tracked(perm):
     b = a + random.randint(1, n//4)
     c = b + random.randint(1, n//4)
     d = c + random.randint(1, n//4)
+    # d puede valer n (n divisible por 4): entonces E está vacío y el sucesor es perm[0].
     affected = [
         perm[a-1], perm[c], perm[d-1], perm[b],
-        perm[c-1], perm[a], perm[b-1], perm[d],
+        perm[c-1], perm[a], perm[b-1], perm[d % n],
         perm[0], perm[-1],
     ]
     A = perm[:a]; B = perm[a:b]; C = perm[b:c]; Dd = perm[c:d]; E = perm[d:]
