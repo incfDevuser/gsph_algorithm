@@ -4,6 +4,14 @@ Research repo for the **GSPH** (Geometric Split and Polish Heuristic) TSP algori
 Two parts: Python experiment harness under `experiments/`, and a LaTeX paper at the root
 (`samplepaper.tex`, `test.tex`, `bibliografia.bib`). Code comments and docs are in Spanish.
 
+## Active work on this branch (`rutas-reales`)
+Real-delivery project (not the TSPLIB paper, which lives on `revision-paper`; don't edit paper files
+or `GSPH_BASE.py` here). Goal: several drivers, real-street routes, exact promised delivery times
+(±5 min or a 1-hour window), in simulation. Approved design:
+`docs/superpowers/specs/2026-10-30-entregas-hora-exacta-design.md`. Nothing of it is implemented yet;
+next step is the implementation plan for its 4 phases. Existing pieces and roadmap:
+`experiments/real/README.md`. Start OSRM first: `bash experiments/real/setup_osrm.sh` (port 5001).
+
 ## Setup
 - Python **3.11.5** (`.python-version`). Use the repo venv:
   ```bash

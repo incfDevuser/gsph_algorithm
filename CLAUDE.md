@@ -8,6 +8,20 @@ Two halves: a Python experiment harness in `experiments/` and an LLNCS-class LaT
 Code comments, output files and docs are in **Spanish**; keep new ones in Spanish. `AGENTS.md` holds
 the same operating notes for other agents; keep the two in sync when either changes.
 
+## Active work on this branch (`rutas-reales`)
+This branch is for the **real-delivery project**, not the TSPLIB paper. The paper lives on the
+`revision-paper` branch (PR to `main`, current paper `samplepaper_v3.tex`); this branch forked from
+`main` before that work, so the paper files and `GSPH_BASE.py` here are older — don't edit them here.
+- Goal: several drivers, routes on real streets, and **exact promised delivery times** (±5 min, or a
+  1-hour window), always in simulation. Approved design (read it first):
+  `docs/superpowers/specs/2026-10-30-entregas-hora-exacta-design.md`.
+- Status: design approved, **nothing of it implemented yet**. Next step is the implementation plan
+  (superpowers:writing-plans) for the 4 phases in the design, then build phase 1.
+- What already works: `experiments/real/` (OSRM client, single-vehicle ATSP solver, `ciudad.py`);
+  entry point and roadmap in `experiments/real/README.md`.
+- Start OSRM before anything that calls it: `bash experiments/real/setup_osrm.sh` (map already
+  processed in `experiments/data/osm/`, so it only starts the `osrm-chile` container on port 5001).
+
 ## Setup
 `.python-version` says 3.11.5, but the existing `.venv` runs Python 3.14 (with numba 0.68.1).
 Always use the repo venv — the system `python3` lacks matplotlib, so plots silently get skipped.
