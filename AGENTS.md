@@ -62,6 +62,27 @@ repo venv (`.venv/bin/python`), the system `python3` here lacks it.
 - `experiments/scripts/verify_structure.py` — sanity-checks expected layout (note: it lists some
   script names that don't exist; treat its list as aspirational, not authoritative).
 
+## Real road routes (`experiments/real/`)
+Separate from the TSPLIB pipeline: stops on a real street network, cost = OSRM travel time.
+- `setup_osrm.sh` downloads `chile-latest.osm.pbf` (Geofabrik, ~350 MB) into the git-ignored
+  `experiments/data/osm/`, processes it with the official `osrm-backend:v6.0.0` docker image (~1 min)
+  and runs container `osrm-chile` on **port 5001** (5000 is macOS AirPlay). `osrm_cliente.py` reads
+  `OSRM_URL`. OSRM v6's `car.lua` has no signal penalty (falls back to 2 s); the script injects
+  `traffic_signal_penalty` (env `SEMAFORO_S`, default 15 s; change it with `--rebuild`).
+- `solver_ruta.py`: ATSP solver (`resolver(D, xy, deposito, tiempo, semilla, retorno)`), integer
+  costs in tenths of a second. Same ideas as V2 (candidate lists, queue local search, local
+  double-bridge ILS with temperature, multi-start funnel incl. a Hilbert/quadrant start), but rewritten
+  for asymmetric costs: the 2-opt never reverses the complement (in ATSP that is another tour), it
+  evaluates both reconnections of each edge pair, and the inner reversed-arc cost comes from forward/
+  backward prefix sums `F`/`B`, recomputed after every applied move (O(n), fine for ≤ a few thousand
+  stops). Rejected kicks restore a full copy (no journal). `retorno=False` = open route via
+  `D[:, depot] = 0`. Validated vs Held-Karp (n ≤ 12, 0 gap).
+- `ciudad.py`: random stops in a preset zone (`ZONAS`) snapped with `/nearest?exclude=motorway` (else
+  stops land on Costanera Norte), or `--csv lat,lon[,nombre]` (row 1 = depot), or `--instancia
+  instancia.npz` to rerun without OSRM. Compares against OR-Tools GLS (same time) and the
+  straight-line-optimized tour measured on streets; writes `experiments/results/real/<name>/`
+  (`resumen.txt`, `orden.csv`, `instancia.npz`, `mapa.html` via folium + OSRM route geometry).
+
 ## Data / conventions
 - Instances are TSPLIB `.tsp` files (`instances/standard/`, `instances/large/`). Parser only reads
   `NODE_COORD_SECTION`; distances are **EUC_2D rounded to integer** (`int(dist + 0.5)`) — this is the

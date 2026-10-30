@@ -140,6 +140,27 @@ BKS live in two places: the `BKS` dict in `run_all_and_latex.py` (used for GAPs)
   the benchmark tables.
 - `compare_runs.py` globs `graficos/runs/` for `run_*.png` / `*_run_*.png`; keep plot names aligned.
 
+## Real road routes (`experiments/real/`)
+Separate from the TSPLIB pipeline: stops on a real street network, cost = OSRM travel time.
+- `setup_osrm.sh` downloads `chile-latest.osm.pbf` (Geofabrik, ~350 MB) into the git-ignored
+  `experiments/data/osm/`, processes it with the official `osrm-backend:v6.0.0` docker image (~1 min)
+  and runs container `osrm-chile` on **port 5001** (5000 is macOS AirPlay). `osrm_cliente.py` reads
+  `OSRM_URL`. OSRM v6's `car.lua` has no signal penalty (falls back to 2 s); the script injects
+  `traffic_signal_penalty` (env `SEMAFORO_S`, default 15 s; change it with `--rebuild`).
+- `solver_ruta.py`: ATSP solver (`resolver(D, xy, deposito, tiempo, semilla, retorno)`), integer
+  costs in tenths of a second. Same ideas as V2 (candidate lists, queue local search, local
+  double-bridge ILS with temperature, multi-start funnel incl. a Hilbert/quadrant start), but rewritten
+  for asymmetric costs: the 2-opt never reverses the complement (in ATSP that is another tour), it
+  evaluates both reconnections of each edge pair, and the inner reversed-arc cost comes from forward/
+  backward prefix sums `F`/`B`, recomputed after every applied move (O(n), fine for ≤ a few thousand
+  stops). Rejected kicks restore a full copy (no journal). `retorno=False` = open route via
+  `D[:, depot] = 0`. Validated vs Held-Karp (n ≤ 12, 0 gap).
+- `ciudad.py`: random stops in a preset zone (`ZONAS`) snapped with `/nearest?exclude=motorway` (else
+  stops land on Costanera Norte), or `--csv lat,lon[,nombre]` (row 1 = depot), or `--instancia
+  instancia.npz` to rerun without OSRM. Compares against OR-Tools GLS (same time) and the
+  straight-line-optimized tour measured on streets; writes `experiments/results/real/<name>/`
+  (`resumen.txt`, `orden.csv`, `instancia.npz`, `mapa.html` via folium + OSRM route geometry).
+
 ## Other files
 - `GSPH_V1.py`: old baseline kept for comparison; don't develop on it.
 - `verify_structure.py` lists some scripts that don't exist — aspirational, not authoritative.
