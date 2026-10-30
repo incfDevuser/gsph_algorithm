@@ -2,9 +2,10 @@
 
 Research repo for the **GSPH** (Geometric Split and Polish Heuristic) TSP algorithm.
 Two parts: Python experiment harness under `experiments/`, and a LaTeX paper at the root
-(`samplepaper_v2.tex` is the current paper and `samplepaper_v2_es.tex` its Spanish translation, kept in
-sync; `samplepaper.tex` and `test.tex` are older versions;
-all cite `bibliografia.bib`). Code comments and docs are in Spanish.
+(`samplepaper_v3.tex` is the current paper and `samplepaper_v3_es.tex` its Spanish translation, kept in
+sync; `samplepaper_v2*.tex`, `samplepaper.tex` and `test.tex` are older versions;
+all cite `bibliografia.bib`). Code comments and docs are in Spanish. `REPRODUCIR.md` lists the command
+behind every table and figure.
 
 ## Setup
 - Python **3.11.5** (`.python-version`). Use the repo venv:
@@ -56,7 +57,8 @@ repo venv (`.venv/bin/python`), the system `python3` here lacks it.
   is the paper's "previous implementation" and only received a crash fix in `double_bridge_tracked`.
 - Paper revision scripts in `experiments/scripts/`: `ablacion_construccion.py` (construction ablation),
   `sensibilidad_parametros.py`, `comparar_lkh.py` (LKH binary in `experiments/data/lkh/` or LKH-3 via
-  `elkai`), `remedir_v1.py`, and `tablas_revision.py` (CSV → LaTeX). Details in CLAUDE.md.
+  `elkai`), `remedir_v1.py`, `convergencia.py` (GAP vs time figure), `held_karp.py`, and
+  `tablas_revision.py` (CSV → LaTeX). Details in CLAUDE.md.
 - `experiments/scripts/benchmark_v2.py` — fast in-process V2 benchmark (no plots) over `standard/` +
   EUC_2D `large/` instances; writes `experiments/results/v2/benchmark_v2.csv`.
 - `experiments/algorithms/GSPH_V1.py` — older baseline; keep for comparison, don't develop on it.

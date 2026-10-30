@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Research repo for **GSPH** (Geometric Split and Polish Heuristic), a 2D Euclidean TSP heuristic.
 Two halves: a Python experiment harness in `experiments/` and an LLNCS-class LaTeX paper at the root
-(`samplepaper_v2.tex` is the current paper, about GSPH_V2, and `samplepaper_v2_es.tex` its Spanish
-translation with the same tables — keep both in sync; `samplepaper.tex` is the previous version
-and `test.tex` an older draft; all cite `bibliografia.bib`).
+(`samplepaper_v3.tex` is the current paper — a standalone rewrite about GSPH_V2 that adds the
+convergence study and the wide sensitivity — and `samplepaper_v3_es.tex` its Spanish translation;
+keep both in sync. `samplepaper_v2*.tex` is the previous revision, `samplepaper.tex` and `test.tex`
+older drafts; all cite `bibliografia.bib`). `REPRODUCIR.md` maps every table/figure to its command.
 Code comments, output files and docs are in **Spanish**; keep new ones in Spanish. `AGENTS.md` holds
 the same operating notes for other agents; keep the two in sync when either changes.
 
@@ -157,6 +158,12 @@ long-format CSV + summary under `experiments/results/<dir>/`, and validate every
   `PIP_CONSTRAINT` containing `scikit-build-core<0.10`.
 - `remedir_v1.py` → `v1_remedido/`: re-runs GSPH_BASE best-of-5; a partial run (30/37) confirmed the
   paper's previous-implementation numbers (`v1_verificacion_parcial.csv`).
+- `convergencia.py` → `convergencia/`: best-tour GAP vs time (clock starts after D/candidates) for
+  vecino/particion/gsph_fc; calls `_ils_block` in blocks of 100 kicks (same search as big blocks,
+  numba RNG keeps its state) and draws `convergencia.png` (copied to `Resultados_v3/`).
+- `held_karp.py`: exact optimum for tiny instances (eil10 = 159, eil20 = 243).
+- `sensibilidad_parametros.py --amplio`: the same variants on 16 instances (100–1,889 cities,
+  uniform/clustered/drilling) → `sens_amplio_*.csv`.
 - `tablas_revision.py`: turns those CSVs into LaTeX (`experiments/results/tablas_revision.tex`).
 Run experiments one at a time when timings matter; times taken with other jobs running are only
 comparable within the same table. `eil10`/`eil20` are subsets of eil51 (optima 159/243 by Held-Karp).
@@ -166,5 +173,7 @@ comparable within the same table. `eil10`/`eil20` are subsets of eil51 (optima 1
 - `verify_structure.py` lists some scripts that don't exist — aspirational, not authoritative.
 - `experiments/README.md` references `run_all_instances.py` and `aggregate_resources.py`, which do
   not exist, and an older output layout (`resultados.txt`, `grafico_*.png`).
-- `samplepaper_v2.tex` takes its figures from `Resultados_v2/` (in the repo); the old
+- `samplepaper_v3*.tex` take figures from `Resultados_v2/` and `Resultados_v3/` (both in the repo).
+  v3 cites an anonymized repo URL placeholder (`anonymous.4open.science/r/GSPH-FC`) that the author
+  must replace before submission. `samplepaper_v2.tex` uses only `Resultados_v2/`; the old
   `samplepaper.tex` points to `Resultados/*.png`, which is not. No LaTeX toolchain is installed locally.
